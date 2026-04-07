@@ -1,0 +1,11 @@
+/node_modules
+.DS_Store
+*.log
+
+# Local safety copies
+games.backup-before-merge-2026-04-07.csv
+
+# Generated/import helper artifacts that are not needed for the published site
+abime-reviews.json
+lemon-ratings-report.json
+openretro-reviews-report.json

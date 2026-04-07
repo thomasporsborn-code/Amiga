@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My Amiga Games</title>
+    <link rel="stylesheet" href="./styles.css?v=20260407i" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <div class="desktop-bar">
+        <div class="desktop-bar__menu">Workbench</div>
+        <div class="desktop-bar__menu">Window</div>
+        <div class="desktop-bar__menu">Icons</div>
+        <div class="desktop-bar__menu">Tools</div>
+        <button class="desktop-bar__nav button button--text" id="catalog-nav" type="button">
+          Collection
+        </button>
+        <button class="desktop-bar__nav button button--text" id="stats-nav" type="button">
+          Statistics
+        </button>
+        <button class="desktop-bar__nav button button--text" id="top50-nav" type="button">
+          Top 50
+        </button>
+        <button class="desktop-bar__nav button button--text admin-only hidden" id="quality-nav" type="button">
+          Data Quality
+        </button>
+        <button class="desktop-bar__auth button button--text" id="auth-toggle" type="button">
+          Admin Login
+        </button>
+      </div>
+
+      <header class="hero">
+        <div class="panel-chrome">
+          <span class="window-dot"></span>
+          <span class="window-title">My Amiga Games</span>
+          <span class="window-lines" aria-hidden="true"></span>
+          <span class="window-gadget window-gadget--filled"></span>
+          <span class="window-gadget"></span>
+        </div>
+        <div class="hero__copy">
+          <h1>My Amiga Games</h1>
+
+          <div class="hero__stats" id="hero-stats"></div>
+        </div>
+
+      </header>
+
+      <main class="catalog-layout" id="catalog-page">
+        <aside class="filters">
+          <div class="panel-chrome panel-chrome--compact">
+            <span class="window-dot"></span>
+            <span class="window-title">Filters</span>
+            <span class="window-lines" aria-hidden="true"></span>
+            <span class="window-gadget window-gadget--filled"></span>
+            <span class="window-gadget"></span>
+          </div>
+          <div class="filters__header">
+            <h2>Filters</h2>
+            <button class="button button--text" id="reset-filters" type="button">
+              Reset
+            </button>
+          </div>
+
+          <label class="field">
+            <span>Search Title or Publisher</span>
+            <input id="search-input" type="search" placeholder="For example Lemmings, Psygnosis..." />
+          </label>
+
+          <label class="field">
+            <span>Genre</span>
+            <select id="genre-filter"></select>
+          </label>
+
+          <label class="field">
+            <span>Publisher</span>
+            <select id="publisher-filter"></select>
+          </label>
+
+          <label class="field">
+            <span>Developer</span>
+            <select id="developer-filter"></select>
+          </label>
+
+          <label class="field">
+            <span>Release Year</span>
+            <select id="year-filter"></select>
+          </label>
+
+          <div class="filter-block rating-filter">
+            <div class="rating-filter__header">
+              <span class="filter-block__title">Lemon Rating</span>
+              <strong class="rating-filter__value" id="rating-range-value">0.0 - 10.0</strong>
+            </div>
+            <div class="rating-range" id="rating-range">
+              <div class="rating-range__track" aria-hidden="true"></div>
+              <input id="rating-min" class="rating-range__input" type="range" min="0" max="10" step="0.1" value="0" />
+              <input id="rating-max" class="rating-range__input" type="range" min="0" max="10" step="0.1" value="10" />
+            </div>
+            <div class="rating-range__labels" aria-hidden="true">
+              <span>0</span>
+              <span>5</span>
+              <span>10</span>
+            </div>
+          </div>
+
+          <fieldset class="toggle-group">
+            <legend>Selection</legend>
+            <label><input id="whdload-only" type="checkbox" /> WHDLoad installed</label>
+            <label><input id="complete-only" type="checkbox" /> Complete</label>
+            <label><input id="original-only" type="checkbox" /> Original edition</label>
+            <label><input id="extremely-rare-only" type="checkbox" /> Extremely Rare</label>
+          </fieldset>
+
+          <fieldset class="toggle-group admin-only hidden" id="admin-filter-group">
+            <legend>Admin Filters</legend>
+            <label><input id="incomplete-only" type="checkbox" /> Incomplete only</label>
+            <label><input id="tested-only" type="checkbox" /> Tested only</label>
+            <label><input id="untested-only" type="checkbox" /> Untested only</label>
+            <label><input id="show-sold" type="checkbox" /> Show sold</label>
+          </fieldset>
+        </aside>
+
+        <section class="catalog">
+          <div class="panel-chrome panel-chrome--compact">
+            <span class="window-dot"></span>
+            <span class="window-title">Your Original Editions</span>
+            <span class="window-lines" aria-hidden="true"></span>
+            <span class="window-gadget window-gadget--filled"></span>
+            <span class="window-gadget"></span>
+          </div>
+          <div class="catalog__toolbar">
+            <div>
+              <p class="eyebrow">Workbench Drawer</p>
+              <h2>Your Original Editions</h2>
+            </div>
+
+            <div class="toolbar-controls">
+              <button class="button button--ghost admin-only hidden" id="add-game-button" type="button">
+                Add Game
+              </button>
+              <button class="button button--ghost admin-only hidden" id="export-csv-button" type="button">
+                Export CSV
+              </button>
+              <button class="button button--ghost admin-only hidden" id="export-backup-button" type="button">
+                Export Admin Data
+              </button>
+              <button class="button button--ghost admin-only hidden" id="import-backup-button" type="button">
+                Import Admin Data
+              </button>
+              <input class="hidden" id="import-backup-input" type="file" accept="application/json,.json" />
+              <div class="view-toggle" aria-label="Choose view">
+                <button class="view-toggle__button is-active" id="grid-view" type="button">
+                  Grid View
+                </button>
+                <button class="view-toggle__button" id="list-view" type="button">
+                  List View
+                </button>
+              </div>
+              <label class="field field--compact">
+                <span>Sort</span>
+                <select id="sort-order">
+                  <option value="title-asc">Title A-Z</option>
+                  <option value="year-desc">Newest First</option>
+                  <option value="year-asc">Oldest First</option>
+                  <option value="publisher-asc">Publisher A-Z</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <div class="collection-summary" id="collection-summary"></div>
+          <div class="list-header hidden" id="list-header" aria-hidden="true">
+            <span>Title</span>
+            <span>Genre</span>
+            <span>Studio</span>
+            <span>Year</span>
+            <span>Format</span>
+            <span>Rating</span>
+            <span>WHDLoad</span>
+            <span>Status</span>
+          </div>
+          <div class="game-grid" id="game-grid"></div>
+          <div class="empty-state hidden" id="empty-state">
+            <h3>No games matched the filters</h3>
+            <p>Try broadening the search or reset the filters to view the full collection again.</p>
+          </div>
+        </section>
+      </main>
+
+      <main class="stats-page hidden" id="stats-page">
+        <section class="stats-screen">
+          <div class="panel-chrome panel-chrome--compact">
+            <span class="window-dot"></span>
+            <span class="window-title">Collection Statistics</span>
+            <span class="window-lines" aria-hidden="true"></span>
+            <span class="window-gadget window-gadget--filled"></span>
+            <span class="window-gadget"></span>
+          </div>
+          <div class="stats-screen__header">
+            <div>
+              <p class="eyebrow">Workbench Analytics</p>
+              <h2>Collection Statistics</h2>
+            </div>
+          </div>
+          <section class="stats-board" id="stats-board"></section>
+        </section>
+      </main>
+
+      <main class="top50-page hidden" id="top50-page">
+        <section class="stats-screen">
+          <div class="panel-chrome panel-chrome--compact">
+            <span class="window-dot"></span>
+            <span class="window-title">Top 50</span>
+            <span class="window-lines" aria-hidden="true"></span>
+            <span class="window-gadget window-gadget--filled"></span>
+            <span class="window-gadget"></span>
+          </div>
+          <div class="stats-screen__header">
+            <div>
+              <p class="eyebrow">Favorites Drawer</p>
+              <h2>Top 50</h2>
+            </div>
+          </div>
+          <div class="collection-summary" id="top50-summary"></div>
+          <section class="top50-list" id="top50-list"></section>
+        </section>
+      </main>
+
+      <main class="quality-page hidden" id="quality-page">
+        <section class="stats-screen">
+          <div class="panel-chrome panel-chrome--compact">
+            <span class="window-dot"></span>
+            <span class="window-title">Data Quality Tools</span>
+            <span class="window-lines" aria-hidden="true"></span>
+            <span class="window-gadget window-gadget--filled"></span>
+            <span class="window-gadget"></span>
+          </div>
+          <div class="stats-screen__header">
+            <div>
+              <p class="eyebrow">Admin Diagnostics</p>
+              <h2>Data Quality Tools</h2>
+            </div>
+          </div>
+          <div class="collection-summary" id="quality-summary"></div>
+          <section class="quality-grid" id="quality-grid"></section>
+        </section>
+      </main>
+    </div>
+
+    <template id="game-card-template">
+      <article class="game-card">
+        <div class="window-chrome">
+          <span class="window-dot"></span>
+          <span class="window-title">Game Info</span>
+          <span class="window-lines" aria-hidden="true"></span>
+          <button class="card-edit-button hidden" type="button">Edit</button>
+          <span class="window-gadget window-gadget--filled"></span>
+          <span class="window-gadget"></span>
+        </div>
+        <div class="game-card__body">
+          <h3 class="game-card__title"></h3>
+          <div class="game-card__media">
+            <div class="boxart-frame">
+              <img class="boxart-image hidden" alt="" loading="lazy" />
+              <div class="boxart-placeholder">
+                <span class="boxart-placeholder__label">BOX ART</span>
+                <strong class="boxart-placeholder__title"></strong>
+              </div>
+            </div>
+          </div>
+          <div class="game-card__content">
+            <p class="game-card__genre"></p>
+            <div class="game-card__studio">
+              <p class="game-card__publisher"></p>
+              <p class="game-card__developer"></p>
+            </div>
+            <p class="game-card__year"></p>
+            <div class="game-card__specs">
+              <p class="game-card__box-size"></p>
+              <p class="game-card__chipset"></p>
+            </div>
+            <p class="game-card__lemon-rating"></p>
+          </div>
+          <dl class="meta-grid">
+            <div>
+              <dt>WHDLoad</dt>
+              <dd class="meta-whdload"></dd>
+            </div>
+            <div>
+              <dt>Installed</dt>
+              <dd class="meta-installed"></dd>
+            </div>
+            <div>
+              <dt>Complete</dt>
+              <dd class="meta-complete"></dd>
+            </div>
+            <div>
+              <dt>Original Edition</dt>
+              <dd class="meta-original"></dd>
+            </div>
+          </dl>
+        </div>
+      </article>
+    </template>
+
+    <div class="modal-shell hidden" id="auth-modal" aria-hidden="true">
+      <div class="modal-panel">
+        <div class="panel-chrome panel-chrome--compact">
+          <span class="window-dot"></span>
+          <span class="window-title">Admin Login</span>
+          <span class="window-lines" aria-hidden="true"></span>
+          <span class="window-gadget window-gadget--filled"></span>
+          <span class="window-gadget"></span>
+        </div>
+        <form class="modal-form" id="auth-form">
+          <p class="modal-copy">Log in to unlock editing of game data.</p>
+          <label class="field">
+            <span>Password</span>
+            <input id="auth-password" type="password" autocomplete="current-password" />
+          </label>
+          <p class="modal-error hidden" id="auth-error">Incorrect password.</p>
+          <div class="modal-actions">
+            <button class="button button--ghost" id="auth-cancel" type="button">Cancel</button>
+            <button class="button button--primary" type="submit">Log In</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="modal-shell hidden" id="editor-modal" aria-hidden="true">
+      <div class="modal-panel modal-panel--editor">
+        <div class="panel-chrome panel-chrome--compact">
+          <span class="window-dot"></span>
+          <span class="window-title">Edit Game</span>
+          <span class="window-lines" aria-hidden="true"></span>
+          <span class="window-gadget window-gadget--filled"></span>
+          <span class="window-gadget"></span>
+        </div>
+        <form class="modal-form modal-form--editor" id="editor-form">
+          <h3 class="editor-title" id="editor-title"></h3>
+
+          <div class="editor-boxart">
+            <div class="boxart-frame editor-boxart__frame" id="editor-boxart-dropzone" role="button" tabindex="0">
+              <img class="editor-boxart__image hidden" id="editor-boxart-image" alt="" />
+              <div class="boxart-placeholder" id="editor-boxart-placeholder">
+                <span class="boxart-placeholder__label">BOX ART</span>
+                <strong class="boxart-placeholder__title" id="editor-boxart-title"></strong>
+              </div>
+            </div>
+            <div class="editor-boxart__controls">
+              <p class="editor-boxart__hint">Drop an image here or choose a file.</p>
+              <div class="editor-boxart__actions">
+                <button class="button button--ghost" id="editor-boxart-upload" type="button">Choose Image</button>
+                <button class="button button--ghost" id="editor-boxart-clear" type="button">Clear Boxart</button>
+              </div>
+              <input class="hidden" id="editor-boxart-file" type="file" accept="image/*" />
+              <input class="hidden" id="editor-boxart-path" type="text" />
+            </div>
+          </div>
+
+          <div class="editor-grid">
+            <label class="field">
+              <span>Title</span>
+              <input id="editor-title-input" type="text" />
+            </label>
+            <label class="field">
+              <span>Genre</span>
+              <input id="editor-genre" type="text" />
+            </label>
+            <label class="field">
+              <span>Publisher</span>
+              <input id="editor-publisher" type="text" />
+            </label>
+            <label class="field">
+              <span>Developer</span>
+              <input id="editor-developer" type="text" />
+            </label>
+            <label class="field">
+              <span>Release Year</span>
+              <input id="editor-release" type="number" min="1980" max="2030" />
+            </label>
+            <label class="field">
+              <span>Box Size</span>
+              <input id="editor-box-size" type="text" />
+            </label>
+            <label class="field">
+              <span>Chipset</span>
+              <input id="editor-chipset" type="text" />
+            </label>
+            <label class="field">
+              <span>Lemon Rating</span>
+              <input id="editor-lemon-rating" type="number" min="0" max="10" step="0.01" />
+            </label>
+            <label class="field">
+              <span>WHDLoad Installed</span>
+              <select id="editor-whdload-installed">
+                <option value="">Unknown</option>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Complete</span>
+              <select id="editor-complete">
+                <option value="">Unknown</option>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Edition</span>
+              <select id="editor-edition">
+                <option value="">Unknown</option>
+                <option value="Original">Original</option>
+                <option value="Budget">Budget</option>
+                <option value="Re-release">Re-release</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Hall of Light Rarity</span>
+              <select id="editor-hol-rarity">
+                <option value="">Unknown</option>
+                <option value="Extremely Rare">Extremely Rare</option>
+                <option value="Very Rare">Very Rare</option>
+                <option value="Rare">Rare</option>
+                <option value="Uncommon">Uncommon</option>
+                <option value="Common">Common</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Top 50 Rank</span>
+              <input id="editor-top50-rank" type="number" min="1" max="50" />
+            </label>
+            <label class="field">
+              <span>Sold</span>
+              <select id="editor-sold">
+                <option value="">No</option>
+                <option value="Yes">Yes</option>
+              </select>
+            </label>
+            <label class="field field--full">
+              <span>Top 50 Comment</span>
+              <textarea id="editor-top50-comment" rows="4" placeholder="Why this game belongs in your Top 50..."></textarea>
+            </label>
+          </div>
+
+          <div class="modal-actions">
+            <button class="button button--ghost" id="editor-cancel" type="button">Cancel</button>
+            <button class="button button--ghost" id="editor-reset" type="button">Reset Game</button>
+            <button class="button button--primary" type="submit">Save Changes</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="modal-shell hidden" id="details-modal" aria-hidden="true">
+      <div class="modal-panel modal-panel--details">
+        <div class="panel-chrome panel-chrome--compact">
+          <span class="window-dot"></span>
+          <span class="window-title">Game Details</span>
+          <span class="window-lines" aria-hidden="true"></span>
+          <span class="window-gadget window-gadget--filled"></span>
+          <span class="window-gadget"></span>
+        </div>
+        <div class="details-panel">
+          <div class="details-panel__header">
+            <h3 class="details-panel__title" id="details-title"></h3>
+            <button class="button button--ghost" id="details-close" type="button">Close</button>
+          </div>
+
+          <div class="details-panel__body">
+            <div class="details-panel__media">
+              <div class="boxart-frame boxart-frame--details">
+                <img class="details-boxart-image hidden" id="details-boxart-image" alt="" />
+                <div class="boxart-placeholder" id="details-boxart-placeholder">
+                  <span class="boxart-placeholder__label">BOX ART</span>
+                  <strong class="boxart-placeholder__title" id="details-boxart-title"></strong>
+                </div>
+              </div>
+            </div>
+
+            <div class="details-panel__content">
+              <div class="details-specs">
+                <p id="details-genre"></p>
+                <p id="details-publisher"></p>
+                <p id="details-developer"></p>
+                <p id="details-year"></p>
+                <p id="details-box-size"></p>
+                <p id="details-chipset"></p>
+                <p id="details-copy-protection"></p>
+                <p id="details-hol-rarity"></p>
+                <p id="details-lemon-rating"></p>
+              </div>
+
+              <dl class="meta-grid meta-grid--details">
+                <div>
+                  <dt>WHDLoad</dt>
+                  <dd id="details-whdload"></dd>
+                </div>
+                <div>
+                  <dt>Installed</dt>
+                  <dd id="details-installed"></dd>
+                </div>
+                <div>
+                  <dt>Complete</dt>
+                  <dd id="details-complete"></dd>
+                </div>
+                <div>
+                  <dt>Original Edition</dt>
+                  <dd id="details-original"></dd>
+                </div>
+              </dl>
+
+              <section class="review-panel">
+                <div class="review-panel__header">
+                  <h4>OpenRetro Magazine Reviews</h4>
+                  <strong id="details-review-average">No review data</strong>
+                </div>
+                <div class="review-panel__list" id="details-review-list"></div>
+              </section>
+
+              <section class="review-panel admin-only hidden" id="details-admin-panel">
+                <div class="review-panel__header">
+                  <h4>Admin Notes</h4>
+                </div>
+                <div class="review-panel__list">
+                  <div class="review-row">
+                    <div class="review-row__source">Tested</div>
+                    <div class="review-row__score" id="details-tested"></div>
+                  </div>
+                  <div class="review-row">
+                    <div class="review-row__source">Paid</div>
+                    <div class="review-row__score" id="details-paid"></div>
+                  </div>
+                  <div class="review-row">
+                    <div class="review-row__source">Sold</div>
+                    <div class="review-row__score" id="details-sold"></div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="./app.js?v=20260407i"></script>
+  </body>
+</html>
