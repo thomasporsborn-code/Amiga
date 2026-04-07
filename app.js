@@ -114,6 +114,7 @@ const elements = {
   detailsReviewAverage: document.querySelector("#details-review-average"),
   detailsReviewList: document.querySelector("#details-review-list"),
   heroStats: document.querySelector("#hero-stats"),
+  heroLatest: document.querySelector("#hero-latest"),
   collectionSummary: document.querySelector("#collection-summary"),
   statsBoard: document.querySelector("#stats-board"),
   top50Summary: document.querySelector("#top50-summary"),
@@ -881,25 +882,77 @@ function renderHeroStats(games) {
   const publisherCount = new Set(games.map((game) => game.publisher).filter(Boolean)).size;
   const developerCount = new Set(games.map((game) => game.developer).filter(Boolean)).size;
   const originalEditionCount = games.filter((game) => game.edition.toLowerCase() === "original").length;
+  const latestAddedGame = getLatestAddedGame();
 
   elements.heroStats.innerHTML = `
     <div class="stat-chip">
-      <span class="stat-chip__icon" aria-hidden="true">T</span>
-      <span class="stat-chip__text"><strong>${games.length}</strong><span>Titles</span></span>
+      <span class="stat-chip__window">
+        <span class="stat-chip__window-icon" aria-hidden="true"></span>
+        <span class="stat-chip__window-label">Titles</span>
+        <span class="stat-chip__window-lines" aria-hidden="true"></span>
+      </span>
+      <span class="stat-chip__text"><strong>${games.length}</strong><span>Collection entries</span></span>
     </div>
     <div class="stat-chip">
-      <span class="stat-chip__icon" aria-hidden="true">P</span>
-      <span class="stat-chip__text"><strong>${publisherCount}</strong><span>Publishers</span></span>
+      <span class="stat-chip__window">
+        <span class="stat-chip__window-icon" aria-hidden="true"></span>
+        <span class="stat-chip__window-label">Publishers</span>
+        <span class="stat-chip__window-lines" aria-hidden="true"></span>
+      </span>
+      <span class="stat-chip__text"><strong>${publisherCount}</strong><span>Studios listed</span></span>
     </div>
     <div class="stat-chip">
-      <span class="stat-chip__icon" aria-hidden="true">D</span>
-      <span class="stat-chip__text"><strong>${developerCount}</strong><span>Developers</span></span>
+      <span class="stat-chip__window">
+        <span class="stat-chip__window-icon" aria-hidden="true"></span>
+        <span class="stat-chip__window-label">Developers</span>
+        <span class="stat-chip__window-lines" aria-hidden="true"></span>
+      </span>
+      <span class="stat-chip__text"><strong>${developerCount}</strong><span>Developer names</span></span>
     </div>
     <div class="stat-chip">
-      <span class="stat-chip__icon" aria-hidden="true">O</span>
-      <span class="stat-chip__text"><strong>${originalEditionCount}</strong><span>Original Editions</span></span>
+      <span class="stat-chip__window">
+        <span class="stat-chip__window-icon" aria-hidden="true"></span>
+        <span class="stat-chip__window-label">Original</span>
+        <span class="stat-chip__window-lines" aria-hidden="true"></span>
+      </span>
+      <span class="stat-chip__text"><strong>${originalEditionCount}</strong><span>Original editions</span></span>
     </div>
   `;
+
+  elements.heroLatest.innerHTML = latestAddedGame
+    ? `
+      <div class="hero-latest__panel">
+        <div class="hero-latest__chrome">
+          <span class="hero-latest__icon" aria-hidden="true"></span>
+          <span class="hero-latest__title">Latest Added</span>
+          <span class="hero-latest__lines" aria-hidden="true"></span>
+        </div>
+        <div class="hero-latest__content">
+          <div class="hero-latest__media">
+            ${
+              latestAddedGame.boxartPath
+                ? `<img class="hero-latest__image" src="${escapeHtml(latestAddedGame.boxartPath)}" alt="${escapeHtml(latestAddedGame.title)} boxart" />`
+                : `<div class="hero-latest__placeholder"><span>BOX ART</span></div>`
+            }
+          </div>
+          <div class="hero-latest__body">
+            <strong>${escapeHtml(latestAddedGame.title)}</strong>
+            <span>${escapeHtml(latestAddedGame.publisher || "Unknown publisher")}</span>
+            <span>${escapeHtml(latestAddedGame.primaryGenre || "Other")} · ${escapeHtml(String(latestAddedGame.release || "Unknown"))}</span>
+          </div>
+        </div>
+      </div>
+    `
+    : "";
+}
+
+function getLatestAddedGame() {
+  if (!state.rawGames.length) {
+    return null;
+  }
+
+  const latestRaw = state.rawGames[state.rawGames.length - 1];
+  return state.games.find((game) => game.title === latestRaw.title) || state.games[state.games.length - 1] || null;
 }
 
 function renderCollectionSummary(filtered) {
