@@ -14,8 +14,10 @@ const state = {
   filteredGames: [],
   boxartMap: {},
   lemonRatingsMap: {},
+  externalLinksMap: {},
   reviewsMap: {},
   acceptedQualityFindings: persistedData.acceptedQualityFindings,
+  wishlist: Array.isArray(persistedData.wishlist) ? persistedData.wishlist : [],
   isAdmin: window.localStorage.getItem("amiga-admin-session") === "true",
   editingTitle: "",
   editingSourceTitle: "",
@@ -47,13 +49,17 @@ const state = {
 
 const elements = {
   authToggle: document.querySelector("#auth-toggle"),
+  authToggleLabel: document.querySelector("#auth-toggle-label"),
   catalogNav: document.querySelector("#catalog-nav"),
   statsNav: document.querySelector("#stats-nav"),
   top50Nav: document.querySelector("#top50-nav"),
+  galleryNav: document.querySelector("#gallery-nav"),
   qualityNav: document.querySelector("#quality-nav"),
   catalogPage: document.querySelector("#catalog-page"),
   statsPage: document.querySelector("#stats-page"),
   top50Page: document.querySelector("#top50-page"),
+  galleryPage: document.querySelector("#gallery-page"),
+  gamePage: document.querySelector("#game-page"),
   qualityPage: document.querySelector("#quality-page"),
   authModal: document.querySelector("#auth-modal"),
   authForm: document.querySelector("#auth-form"),
@@ -63,7 +69,6 @@ const elements = {
   editorModal: document.querySelector("#editor-modal"),
   editorForm: document.querySelector("#editor-form"),
   editorCancel: document.querySelector("#editor-cancel"),
-  editorReset: document.querySelector("#editor-reset"),
   editorTitle: document.querySelector("#editor-title"),
   editorTitleInput: document.querySelector("#editor-title-input"),
   editorBoxartImage: document.querySelector("#editor-boxart-image"),
@@ -103,6 +108,9 @@ const elements = {
   detailsCopyProtection: document.querySelector("#details-copy-protection"),
   detailsHolRarity: document.querySelector("#details-hol-rarity"),
   detailsLemonRating: document.querySelector("#details-lemon-rating"),
+  detailsGameLink: document.querySelector("#details-game-link"),
+  detailsLemonLink: document.querySelector("#details-lemon-link"),
+  detailsHolLink: document.querySelector("#details-hol-link"),
   detailsWhdload: document.querySelector("#details-whdload"),
   detailsInstalled: document.querySelector("#details-installed"),
   detailsComplete: document.querySelector("#details-complete"),
@@ -114,10 +122,14 @@ const elements = {
   detailsReviewList: document.querySelector("#details-review-list"),
   heroStats: document.querySelector("#hero-stats"),
   heroLatest: document.querySelector("#hero-latest"),
+  wishlistPanel: document.querySelector("#wishlist-panel"),
   collectionSummary: document.querySelector("#collection-summary"),
   statsBoard: document.querySelector("#stats-board"),
   top50Summary: document.querySelector("#top50-summary"),
   top50List: document.querySelector("#top50-list"),
+  gallerySummary: document.querySelector("#gallery-summary"),
+  galleryGrid: document.querySelector("#gallery-grid"),
+  gamePageContent: document.querySelector("#game-page-content"),
   qualitySummary: document.querySelector("#quality-summary"),
   qualityGrid: document.querySelector("#quality-grid"),
   listHeader: document.querySelector("#list-header"),
@@ -177,8 +189,10 @@ async function init() {
     state.games = state.rawGames.map(cloneGame);
     loadBoxartMap();
     loadLemonRatingsMap();
+    loadExternalLinksMap();
     loadReviewsMap();
     hydrateFilters();
+    applyRouteFromLocation();
     render();
   } catch (error) {
     elements.collectionSummary.innerHTML = `
@@ -205,6 +219,7 @@ async function loadCollectionData() {
       filePayload.acceptedQualityFindings,
       persistedData.acceptedQualityFindings,
     );
+    state.wishlist = mergeWishlist(filePayload.wishlist, persistedData.wishlist);
     return true;
   } catch (error) {
     console.warn("games.json could not be loaded on startup.", error);
@@ -256,24 +271,48 @@ async function loadReviewsMap() {
   }
 }
 
+async function loadExternalLinksMap() {
+  try {
+    const response = await fetchTextWithRetry("./external-links.json");
+    state.externalLinksMap = JSON.parse(response);
+  } catch (error) {
+    console.warn("External links map could not be loaded on startup.", error);
+  }
+}
+
 function bindEvents() {
+  window.addEventListener("popstate", () => {
+    applyRouteFromLocation();
+    render();
+  });
+
   elements.catalogNav.addEventListener("click", () => {
     state.currentPage = "catalog";
+    clearGameRoute();
     syncPageView();
   });
 
   elements.statsNav.addEventListener("click", () => {
     state.currentPage = "stats";
+    clearGameRoute();
     syncPageView();
   });
 
   elements.top50Nav.addEventListener("click", () => {
     state.currentPage = "top50";
+    clearGameRoute();
+    syncPageView();
+  });
+
+  elements.galleryNav.addEventListener("click", () => {
+    state.currentPage = "gallery";
+    clearGameRoute();
     syncPageView();
   });
 
   elements.qualityNav.addEventListener("click", () => {
     state.currentPage = "quality";
+    clearGameRoute();
     syncPageView();
   });
 
@@ -296,7 +335,6 @@ function bindEvents() {
 
   elements.editorForm.addEventListener("submit", handleEditorSubmit);
   elements.editorCancel.addEventListener("click", closeEditorModal);
-  elements.editorReset.addEventListener("click", resetEditedGame);
   elements.addGameButton.addEventListener("click", openCreateGameModal);
   elements.exportCsvButton.addEventListener("click", exportCollectionCsv);
   elements.exportBackupButton.addEventListener("click", exportBackupJson);
@@ -304,6 +342,8 @@ function bindEvents() {
     elements.importBackupInput.click();
   });
   elements.importBackupInput.addEventListener("change", handleImportBackupFile);
+  elements.wishlistPanel.addEventListener("submit", handleWishlistSubmit);
+  elements.wishlistPanel.addEventListener("click", handleWishlistClick);
   elements.editorBoxartPath.addEventListener("input", () => {
     updateEditorBoxartPreview(elements.editorTitleInput.value, elements.editorBoxartPath.value);
   });
@@ -779,14 +819,18 @@ function render() {
     .sort(sortGames);
   const top50Games = getTop50Games();
   const qualityReport = buildQualityReport(state.games);
+  const routeGameTitle = getRouteGameTitle();
 
   state.filteredGames = filtered;
 
   renderHeroStats(state.games);
+  renderWishlistPanel();
   renderCollectionSummary(filtered);
   renderStatsBoard(state.games);
   renderGrid(filtered);
   renderTop50(top50Games);
+  renderGallery(filtered);
+  renderGamePage(routeGameTitle);
   renderQualityTools(qualityReport);
   syncPageView();
 }
@@ -944,6 +988,106 @@ function renderHeroStats(games) {
       </div>
     `
     : "";
+}
+
+function renderWishlistPanel() {
+  const wishlistItems = [...new Set((state.wishlist || []).map((item) => cleanText(item)).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b, "sv"),
+  );
+
+  elements.wishlistPanel.innerHTML = `
+    <div class="wishlist-panel__panel">
+      <div class="wishlist-panel__chrome">
+        <span class="wishlist-panel__icon" aria-hidden="true"></span>
+        <span class="wishlist-panel__title">Wishlist</span>
+        <span class="wishlist-panel__lines" aria-hidden="true"></span>
+      </div>
+      <div class="wishlist-panel__body">
+        <p class="wishlist-panel__summary"><strong>${wishlistItems.length}</strong> games on your wanted list.</p>
+        ${
+          state.isAdmin
+            ? `
+              <form class="wishlist-panel__form" id="wishlist-form">
+                <label class="field field--compact">
+                  <span>Add Wishlist Game</span>
+                  <input id="wishlist-input" type="text" placeholder="For example Monkey Island 2" />
+                </label>
+                <button class="button button--ghost" type="submit">Add to Wishlist</button>
+              </form>
+            `
+            : ""
+        }
+        <div class="wishlist-panel__list">
+          ${
+            wishlistItems.length
+              ? wishlistItems
+                  .map(
+                    (title) => `
+                      <div class="wishlist-panel__item">
+                        <span>${escapeHtml(title)}</span>
+                        ${
+                          state.isAdmin
+                            ? `<button class="wishlist-panel__remove" type="button" data-remove-wishlist="${escapeHtml(title)}">Remove</button>`
+                            : ""
+                        }
+                      </div>
+                    `,
+                  )
+                  .join("")
+              : `<p class="wishlist-panel__empty">No wishlist titles added yet.</p>`
+          }
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function handleWishlistSubmit(event) {
+  if (!state.isAdmin) {
+    return;
+  }
+
+  const form = event.target.closest("#wishlist-form");
+
+  if (!form) {
+    return;
+  }
+
+  event.preventDefault();
+  const input = form.querySelector("#wishlist-input");
+  const title = cleanText(input?.value);
+
+  if (!title) {
+    input?.focus();
+    return;
+  }
+
+  if (!state.wishlist.includes(title)) {
+    state.wishlist.push(title);
+    persistAppData();
+    render();
+  }
+
+  if (input) {
+    input.value = "";
+  }
+}
+
+function handleWishlistClick(event) {
+  if (!state.isAdmin) {
+    return;
+  }
+
+  const removeButton = event.target.closest("[data-remove-wishlist]");
+
+  if (!removeButton) {
+    return;
+  }
+
+  const title = cleanText(removeButton.dataset.removeWishlist);
+  state.wishlist = state.wishlist.filter((item) => item !== title);
+  persistAppData();
+  render();
 }
 
 function getLatestAddedGame() {
@@ -1262,6 +1406,177 @@ function renderTop50(top50Games) {
   });
 }
 
+function renderGallery(games) {
+  const galleryGames = games.filter((game) => Boolean(cleanText(game.boxartPath)));
+
+  elements.gallerySummary.innerHTML = `
+    <div><strong>${galleryGames.length}</strong> covers are visible with the active filters.</div>
+    <div>Open any cover to view the full game details in the Workbench info window.</div>
+  `;
+
+  if (!galleryGames.length) {
+    elements.galleryGrid.innerHTML = `
+      <article class="empty-state">
+        <h3>No covers matched the filters</h3>
+        <p>Try broadening the filters to show more boxart in the gallery.</p>
+      </article>
+    `;
+    return;
+  }
+
+  elements.galleryGrid.innerHTML = galleryGames
+    .map(
+      (game) => `
+        <article class="gallery-card">
+          <button class="gallery-card__button" type="button" data-gallery-title="${escapeHtml(game.title)}" aria-label="Open ${escapeHtml(game.title)} details">
+            <div class="gallery-card__frame">
+              ${
+                game.boxartPath
+                  ? `<img class="gallery-card__image" src="${escapeHtml(game.boxartPath)}" alt="${escapeHtml(game.title)} boxart" />`
+                  : `<div class="gallery-card__placeholder"><span>BOX ART</span></div>`
+              }
+            </div>
+            <span class="gallery-card__title">${escapeHtml(game.title)}</span>
+            <span class="gallery-card__meta">${escapeHtml(game.publisher)} · ${escapeHtml(String(game.release || "Unknown"))}</span>
+          </button>
+        </article>
+      `,
+    )
+    .join("");
+
+  elements.galleryGrid.querySelectorAll("[data-gallery-title]").forEach((node) => {
+    node.addEventListener("click", () => {
+      openDetailsModal(node.dataset.galleryTitle);
+    });
+  });
+}
+
+function renderGamePage(title) {
+  const game = state.games.find((entry) => entry.title === title);
+
+  if (!game) {
+    elements.gamePageContent.innerHTML = `
+      <div class="panel-chrome panel-chrome--compact">
+        <span class="window-dot"></span>
+        <span class="window-title">Game Page</span>
+        <span class="window-lines" aria-hidden="true"></span>
+        <span class="window-gadget window-gadget--filled"></span>
+        <span class="window-gadget"></span>
+      </div>
+      <article class="empty-state">
+        <h3>Game not found</h3>
+        <p>The requested game page could not be opened from this collection.</p>
+      </article>
+    `;
+    return;
+  }
+
+  const lemonUrl = getLemonAmigaUrl(game.title);
+  const holUrl = getHallOfLightUrl(game.title);
+
+  elements.gamePageContent.innerHTML = `
+    <div class="panel-chrome panel-chrome--compact">
+      <span class="window-dot"></span>
+      <span class="window-title">${escapeHtml(game.title)}</span>
+      <span class="window-lines" aria-hidden="true"></span>
+      <span class="window-gadget window-gadget--filled"></span>
+      <span class="window-gadget"></span>
+    </div>
+    <div class="details-panel details-panel--standalone">
+      <div class="details-panel__header">
+        <h3 class="details-panel__title">${escapeHtml(game.title)}</h3>
+        <a class="details-link" href="./">Back to collection</a>
+      </div>
+
+      <div class="details-panel__body">
+        <div class="details-panel__media">
+          <div class="boxart-frame boxart-frame--details">
+            ${
+              game.boxartPath
+                ? `<img class="details-boxart-image" src="${escapeHtml(game.boxartPath)}" alt="${escapeHtml(game.title)} boxart" />`
+                : `<div class="boxart-placeholder"><span class="boxart-placeholder__label">BOX ART</span><strong class="boxart-placeholder__title">${escapeHtml(game.title)}</strong></div>`
+            }
+          </div>
+        </div>
+
+        <div class="details-panel__content">
+          <div class="details-specs">
+            <p>Genre: ${escapeHtml(game.primaryGenre)}</p>
+            <p>Publisher: ${escapeHtml(game.publisher)}</p>
+            <p>Developer: ${escapeHtml(game.developer)}</p>
+            <p>Release year: ${escapeHtml(String(game.release || "Unknown"))}</p>
+            <p>Box size: ${escapeHtml(game.boxSize)}</p>
+            <p>Chipset: ${escapeHtml(game.chipset)}</p>
+            <p>Copy protection: ${escapeHtml(game.copyProtection)}</p>
+            <p>Hall of Light Rarity: ${escapeHtml(game.holRarity)}</p>
+            <p>Lemon Amiga Rating: ${escapeHtml(game.lemonRating || "Not imported")}</p>
+          </div>
+
+          <div class="details-links">
+            ${
+              lemonUrl
+                ? `<a class="details-link" href="${escapeHtml(lemonUrl)}" target="_blank" rel="noreferrer noopener">Lemon Amiga</a>`
+                : ""
+            }
+            ${
+              holUrl
+                ? `<a class="details-link" href="${escapeHtml(holUrl)}" target="_blank" rel="noreferrer noopener">Hall of Light</a>`
+                : ""
+            }
+          </div>
+
+          <dl class="meta-grid meta-grid--details">
+            <div>
+              <dt>WHDLoad</dt>
+              <dd>${escapeHtml(game.whdloadDoesNotExist.toLowerCase() === "yes" ? "No" : "Yes")}</dd>
+            </div>
+            <div>
+              <dt>Installed</dt>
+              <dd>${escapeHtml(game.whdloadInstalled || "Unknown")}</dd>
+            </div>
+            <div>
+              <dt>Complete</dt>
+              <dd>${escapeHtml(game.complete || "No data")}</dd>
+            </div>
+            <div>
+              <dt>Original Edition</dt>
+              <dd>${escapeHtml(game.edition.toLowerCase() === "original" ? "Yes" : "No")}</dd>
+            </div>
+          </dl>
+
+          ${buildReviewPanelMarkup(game)}
+
+          ${
+            state.isAdmin
+              ? `
+                <section class="review-panel">
+                  <div class="review-panel__header">
+                    <h4>Admin Notes</h4>
+                  </div>
+                  <div class="review-panel__list">
+                    <div class="review-row">
+                      <div class="review-row__source">Tested</div>
+                      <div class="review-row__score">${escapeHtml(game.tested || "No data")}</div>
+                    </div>
+                    <div class="review-row">
+                      <div class="review-row__source">Paid</div>
+                      <div class="review-row__score">${escapeHtml(formatPaidValue(game.paid))}</div>
+                    </div>
+                    <div class="review-row">
+                      <div class="review-row__source">Sold</div>
+                      <div class="review-row__score">${escapeHtml(getSoldState(game.sold) ? "Yes" : "No")}</div>
+                    </div>
+                  </div>
+                </section>
+              `
+              : ""
+          }
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function buildQualityReport(games) {
   return {
     duplicateEntries: findDuplicateEntries(games),
@@ -1512,15 +1827,20 @@ function syncPageView() {
   const isCatalog = state.currentPage === "catalog";
   const isStats = state.currentPage === "stats";
   const isTop50 = state.currentPage === "top50";
+  const isGallery = state.currentPage === "gallery";
+  const isGame = state.currentPage === "game";
   const isQuality = state.currentPage === "quality";
 
   elements.catalogPage.classList.toggle("hidden", !isCatalog);
   elements.statsPage.classList.toggle("hidden", !isStats);
   elements.top50Page.classList.toggle("hidden", !isTop50);
+  elements.galleryPage.classList.toggle("hidden", !isGallery);
+  elements.gamePage.classList.toggle("hidden", !isGame);
   elements.qualityPage.classList.toggle("hidden", !isQuality);
   elements.catalogNav.classList.toggle("is-active", isCatalog);
   elements.statsNav.classList.toggle("is-active", isStats);
   elements.top50Nav.classList.toggle("is-active", isTop50);
+  elements.galleryNav.classList.toggle("is-active", isGallery);
   elements.qualityNav.classList.toggle("is-active", isQuality);
 }
 
@@ -1693,6 +2013,50 @@ function getLemonRating(title) {
   return state.lemonRatingsMap[title] || "";
 }
 
+function getLemonAmigaUrl(title) {
+  return cleanText(state.externalLinksMap[title]?.lemonUrl)
+    || `https://www.lemonamiga.com/games/list.php?list_title=${encodeURIComponent(cleanText(title))}`;
+}
+
+function getHallOfLightUrl(title) {
+  return cleanText(state.externalLinksMap[title]?.holUrl);
+}
+
+function getGamePageUrl(title) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("game", cleanText(title));
+  return `${url.pathname}${url.search}`;
+}
+
+function getRouteGameTitle() {
+  const url = new URL(window.location.href);
+  return cleanText(url.searchParams.get("game"));
+}
+
+function applyRouteFromLocation() {
+  const routeGameTitle = getRouteGameTitle();
+
+  if (routeGameTitle && state.games.some((game) => game.title === routeGameTitle)) {
+    state.currentPage = "game";
+    return;
+  }
+
+  if (state.currentPage === "game") {
+    state.currentPage = "catalog";
+  }
+}
+
+function clearGameRoute() {
+  const url = new URL(window.location.href);
+
+  if (!url.searchParams.has("game")) {
+    return;
+  }
+
+  url.searchParams.delete("game");
+  window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
 function openAuthModal() {
   elements.authModal.classList.remove("hidden");
   elements.authModal.setAttribute("aria-hidden", "false");
@@ -1730,7 +2094,7 @@ function logoutAdmin() {
 }
 
 function syncAdminUi() {
-  elements.authToggle.textContent = state.isAdmin ? "Admin Logout" : "Admin Login";
+  elements.authToggleLabel.textContent = state.isAdmin ? "Admin Logout" : "Admin Login";
   elements.adminFilterGroup.classList.toggle("hidden", !state.isAdmin);
   elements.detailsAdminPanel.classList.toggle("hidden", !state.isAdmin);
   elements.addGameButton.classList.toggle("hidden", !state.isAdmin);
@@ -1833,6 +2197,14 @@ function openDetailsModal(title) {
   elements.detailsCopyProtection.textContent = `Copy protection: ${game.copyProtection}`;
   elements.detailsHolRarity.textContent = `Hall of Light Rarity: ${game.holRarity}`;
   elements.detailsLemonRating.textContent = `Lemon Amiga Rating: ${game.lemonRating || "Not imported"}`;
+  const lemonUrl = getLemonAmigaUrl(game.title);
+  const holUrl = getHallOfLightUrl(game.title);
+  elements.detailsGameLink.href = getGamePageUrl(game.title);
+  elements.detailsLemonLink.href = lemonUrl;
+  elements.detailsHolLink.href = holUrl || "#";
+  elements.detailsGameLink.classList.remove("hidden");
+  elements.detailsLemonLink.classList.toggle("hidden", !lemonUrl);
+  elements.detailsHolLink.classList.toggle("hidden", !holUrl);
   elements.detailsWhdload.textContent =
     game.whdloadDoesNotExist.toLowerCase() === "yes" ? "No" : "Yes";
   elements.detailsInstalled.textContent = game.whdloadInstalled || "Unknown";
@@ -1870,6 +2242,53 @@ function closeDetailsModal() {
   state.detailsTitle = "";
   elements.detailsModal.classList.add("hidden");
   elements.detailsModal.setAttribute("aria-hidden", "true");
+}
+
+function buildReviewPanelMarkup(game) {
+  const reviewData = state.reviewsMap[game.title];
+
+  if (!reviewData || !Array.isArray(reviewData.reviews) || reviewData.reviews.length === 0) {
+    return `
+      <section class="review-panel">
+        <div class="review-panel__header">
+          <h4>OpenRetro Magazine Reviews</h4>
+          <strong>No review data</strong>
+        </div>
+        <div class="review-panel__list">
+          <p class="review-panel__empty">No imported magazine scores yet for this title.</p>
+        </div>
+      </section>
+    `;
+  }
+
+  const average =
+    reviewData.averagePercent !== undefined && reviewData.averagePercent !== null && reviewData.averagePercent !== ""
+      ? Number.parseFloat(reviewData.averagePercent)
+      : calculateReviewAverage(reviewData.reviews);
+
+  const averageLabel = Number.isNaN(average) ? "No review data" : `Average ${average.toFixed(1)}%`;
+
+  return `
+    <section class="review-panel">
+      <div class="review-panel__header">
+        <h4>OpenRetro Magazine Reviews</h4>
+        <strong>${escapeHtml(averageLabel)}</strong>
+      </div>
+      <div class="review-panel__list">
+        ${reviewData.reviews
+          .map((review) => {
+            const labelParts = [review.magazine, review.issue, review.year].filter(Boolean);
+            return `
+              <div class="review-row">
+                <div class="review-row__source">${escapeHtml(labelParts.join(" · "))}</div>
+                <div class="review-row__score">${escapeHtml(String(review.score))}%</div>
+              </div>
+            `;
+          })
+          .join("")}
+      </div>
+    </section>
+  `;
 }
 
 function renderReviewPanel(title) {
@@ -1985,35 +2404,6 @@ function handleEditorSubmit(event) {
   closeEditorModal();
 }
 
-function resetEditedGame() {
-  if (!state.editingTitle && !state.creatingGame) {
-    return;
-  }
-
-  if (state.creatingGame) {
-    closeEditorModal();
-    return;
-  }
-
-  if (state.editingCustom) {
-    state.rawGames = state.rawGames.filter((game) => game.title !== state.editingSourceTitle);
-    persistAppData();
-    reapplyGames();
-    closeEditorModal();
-    return;
-  }
-
-  const baseGame = state.baseGames.find((game) => game.title === state.editingTitle);
-
-  if (baseGame) {
-    upsertRawGame(buildCollectionRecord(baseGame), state.editingTitle);
-  }
-
-  persistAppData();
-  reapplyGames();
-  closeEditorModal();
-}
-
 function reapplyGames() {
   state.games = state.rawGames.map(cloneGame);
   hydrateFilters();
@@ -2109,6 +2499,7 @@ async function handleImportBackupFile(event) {
       state.rawGames = payload.collection.map(normalizeStoredGame);
       state.baseGames = state.rawGames.map(cloneGame);
       state.acceptedQualityFindings = Array.isArray(payload.acceptedQualityFindings) ? payload.acceptedQualityFindings : [];
+      state.wishlist = Array.isArray(payload.wishlist) ? payload.wishlist.map((item) => cleanText(item)).filter(Boolean) : [];
       persistAppData();
       reapplyGames();
       window.alert("Collection data imported successfully.");
@@ -2116,6 +2507,7 @@ async function handleImportBackupFile(event) {
     }
 
     state.acceptedQualityFindings = Array.isArray(payload.acceptedQualityFindings) ? payload.acceptedQualityFindings : [];
+    state.wishlist = [];
     state.rawGames = buildCollectionFromLegacyAdminData(state.baseGames, payload).map(normalizeStoredGame);
     persistAppData();
     reapplyGames();
@@ -2131,6 +2523,7 @@ function buildCollectionDataPayload() {
     version: APP_STORAGE_VERSION,
     savedAt: new Date().toISOString(),
     acceptedQualityFindings: state.acceptedQualityFindings,
+    wishlist: [...new Set(state.wishlist.map((item) => cleanText(item)).filter(Boolean))],
     collection: state.rawGames.map(buildCollectionRecord),
   };
 }
@@ -2237,6 +2630,7 @@ function loadAppDataStore() {
     savedAt: new Date().toISOString(),
     collection: [],
     acceptedQualityFindings: [],
+    wishlist: [],
   };
 
   window.localStorage.setItem(APP_STORAGE_KEY, JSON.stringify(migrated));
@@ -2258,6 +2652,7 @@ function isValidCollectionData(value) {
     value &&
       typeof value === "object" &&
       Array.isArray(value.collection) &&
+      (!("wishlist" in value) || Array.isArray(value.wishlist)) &&
       value.collection.every((entry) => entry && typeof entry === "object" && typeof cleanText(entry.title || entry.Title) === "string"),
   );
 }
@@ -2268,6 +2663,7 @@ function isValidAppDataStore(value) {
       typeof value === "object" &&
       Array.isArray(value.collection) &&
       Array.isArray(value.acceptedQualityFindings) &&
+      Array.isArray(value.wishlist || []) &&
       value.collection.every((entry) => entry && typeof entry === "object"),
   );
 }
@@ -2301,10 +2697,15 @@ function selectPreferredCollectionPayload(filePayload, localPayload) {
         filePayload.acceptedQualityFindings,
         localPayload.acceptedQualityFindings,
       ),
+      wishlist: mergeWishlist(filePayload.wishlist, localPayload.wishlist),
     };
   }
 
   return filePayload;
+}
+
+function mergeWishlist(...lists) {
+  return [...new Set(lists.flatMap((list) => (Array.isArray(list) ? list : [])).map((item) => cleanText(item)).filter(Boolean))];
 }
 
 function mergeAcceptedQualityFindings(...lists) {

@@ -4,29 +4,51 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>My Amiga Games</title>
-    <link rel="stylesheet" href="./styles.css?v=20260408b" />
+    <link rel="stylesheet" href="./styles.css?v=20260408g" />
   </head>
   <body>
     <div class="page-shell">
-      <div class="desktop-bar">
-        <div class="desktop-bar__menu">Workbench</div>
-        <div class="desktop-bar__menu">Window</div>
-        <div class="desktop-bar__menu">Icons</div>
-        <div class="desktop-bar__menu">Tools</div>
-        <button class="desktop-bar__nav button button--text" id="catalog-nav" type="button">
-          Collection
+      <div class="desktop-icons">
+        <button class="desktop-icon desktop-icon--drawer desktop-icon--collection" id="catalog-nav" type="button">
+          <span class="desktop-icon__art" aria-hidden="true">
+            <span class="desktop-icon__body"></span>
+            <span class="desktop-icon__slot"></span>
+          </span>
+          <span class="desktop-icon__label">Collection</span>
         </button>
-        <button class="desktop-bar__nav button button--text" id="stats-nav" type="button">
-          Statistics
+        <button class="desktop-icon desktop-icon--drawer desktop-icon--stats" id="stats-nav" type="button">
+          <span class="desktop-icon__art" aria-hidden="true">
+            <span class="desktop-icon__body"></span>
+            <span class="desktop-icon__slot"></span>
+          </span>
+          <span class="desktop-icon__label">Statistics</span>
         </button>
-        <button class="desktop-bar__nav button button--text" id="top50-nav" type="button">
-          Top 50
+        <button class="desktop-icon desktop-icon--drawer desktop-icon--top50" id="top50-nav" type="button">
+          <span class="desktop-icon__art" aria-hidden="true">
+            <span class="desktop-icon__body"></span>
+            <span class="desktop-icon__slot"></span>
+          </span>
+          <span class="desktop-icon__label">Top 50</span>
         </button>
-        <button class="desktop-bar__nav button button--text admin-only hidden" id="quality-nav" type="button">
-          Data Quality
+        <button class="desktop-icon desktop-icon--drawer desktop-icon--gallery" id="gallery-nav" type="button">
+          <span class="desktop-icon__art" aria-hidden="true">
+            <span class="desktop-icon__body"></span>
+            <span class="desktop-icon__slot"></span>
+          </span>
+          <span class="desktop-icon__label">Gallery</span>
         </button>
-        <button class="desktop-bar__auth button button--text" id="auth-toggle" type="button">
-          Admin Login
+        <button class="desktop-icon desktop-icon--drawer desktop-icon--quality admin-only hidden" id="quality-nav" type="button">
+          <span class="desktop-icon__art" aria-hidden="true">
+            <span class="desktop-icon__body"></span>
+            <span class="desktop-icon__slot"></span>
+          </span>
+          <span class="desktop-icon__label">Data Quality</span>
+        </button>
+        <button class="desktop-icon desktop-icon--disk desktop-icon--auth" id="auth-toggle" type="button">
+          <span class="desktop-icon__art" aria-hidden="true">
+            <span class="desktop-icon__disk"></span>
+          </span>
+          <span class="desktop-icon__label" id="auth-toggle-label">Admin Login</span>
         </button>
       </div>
 
@@ -43,7 +65,6 @@
             <h1>My Amiga Games</h1>
             <div class="hero__stats" id="hero-stats"></div>
           </div>
-          <section class="hero-latest" id="hero-latest"></section>
         </div>
 
       </header>
@@ -121,12 +142,15 @@
             <label><input id="untested-only" type="checkbox" /> Untested only</label>
             <label><input id="show-sold" type="checkbox" /> Show sold</label>
           </fieldset>
+
+          <section class="hero-latest" id="hero-latest"></section>
+          <section class="sidebar-panel wishlist-panel" id="wishlist-panel"></section>
         </aside>
 
         <section class="catalog">
           <div class="panel-chrome panel-chrome--compact">
             <span class="window-dot"></span>
-            <span class="window-title">Your Original Editions</span>
+            <span class="window-title">Amiga Games</span>
             <span class="window-lines" aria-hidden="true"></span>
             <span class="window-gadget window-gadget--filled"></span>
             <span class="window-gadget"></span>
@@ -134,7 +158,7 @@
           <div class="catalog__toolbar">
             <div>
               <p class="eyebrow">Workbench Drawer</p>
-              <h2>Your Original Editions</h2>
+              <h2>Amiga Games</h2>
             </div>
 
             <div class="toolbar-controls">
@@ -226,6 +250,32 @@
           </div>
           <div class="collection-summary" id="top50-summary"></div>
           <section class="top50-list" id="top50-list"></section>
+        </section>
+      </main>
+
+      <main class="gallery-page hidden" id="gallery-page">
+        <section class="stats-screen">
+          <div class="panel-chrome panel-chrome--compact">
+            <span class="window-dot"></span>
+            <span class="window-title">Boxart Gallery</span>
+            <span class="window-lines" aria-hidden="true"></span>
+            <span class="window-gadget window-gadget--filled"></span>
+            <span class="window-gadget"></span>
+          </div>
+          <div class="stats-screen__header">
+            <div>
+              <p class="eyebrow">Cover Wall</p>
+              <h2>Boxart Gallery</h2>
+            </div>
+          </div>
+          <div class="collection-summary" id="gallery-summary"></div>
+          <section class="gallery-grid" id="gallery-grid"></section>
+        </section>
+      </main>
+
+      <main class="game-page hidden" id="game-page">
+        <section class="stats-screen">
+          <div id="game-page-content"></div>
         </section>
       </main>
 
@@ -449,7 +499,6 @@
 
           <div class="modal-actions">
             <button class="button button--ghost" id="editor-cancel" type="button">Cancel</button>
-            <button class="button button--ghost" id="editor-reset" type="button">Reset Game</button>
             <button class="button button--primary" type="submit">Save Changes</button>
           </div>
         </form>
@@ -463,12 +512,11 @@
           <span class="window-title">Game Details</span>
           <span class="window-lines" aria-hidden="true"></span>
           <span class="window-gadget window-gadget--filled"></span>
-          <span class="window-gadget"></span>
+          <button class="window-gadget window-gadget--close" id="details-close" type="button" aria-label="Close game details"></button>
         </div>
         <div class="details-panel">
           <div class="details-panel__header">
             <h3 class="details-panel__title" id="details-title"></h3>
-            <button class="button button--ghost" id="details-close" type="button">Close</button>
           </div>
 
           <div class="details-panel__body">
@@ -493,6 +541,18 @@
                 <p id="details-copy-protection"></p>
                 <p id="details-hol-rarity"></p>
                 <p id="details-lemon-rating"></p>
+              </div>
+
+              <div class="details-links">
+                <a class="details-link" id="details-game-link" href="#">
+                  Open own page
+                </a>
+                <a class="details-link" id="details-lemon-link" href="#" target="_blank" rel="noreferrer noopener">
+                  Lemon Amiga
+                </a>
+                <a class="details-link" id="details-hol-link" href="#" target="_blank" rel="noreferrer noopener">
+                  Hall of Light
+                </a>
               </div>
 
               <dl class="meta-grid meta-grid--details">
@@ -547,6 +607,6 @@
       </div>
     </div>
 
-    <script type="module" src="./app.js?v=20260408b"></script>
+    <script type="module" src="./app.js?v=20260408g"></script>
   </body>
 </html>
