@@ -3,19 +3,18 @@ const CHART_COLORS = ["#0058ac", "#2d82d4", "#67a9e4", "#90c2ef", "#f29f3f", "#e
 const APP_STORAGE_KEY = "amiga-data-store";
 const APP_STORAGE_BACKUP_KEY = "amiga-data-store-backup";
 const APP_STORAGE_VERSION = 1;
-const ADMIN_DATA_URL = "./admin-data.json";
+const COLLECTION_DATA_URL = "./games.json";
 
 const persistedData = loadAppDataStore();
 
 const state = {
+  baseGames: [],
   rawGames: [],
   games: [],
   filteredGames: [],
   boxartMap: {},
   lemonRatingsMap: {},
   reviewsMap: {},
-  customGames: persistedData.customGames,
-  gameOverrides: persistedData.gameOverrides,
   acceptedQualityFindings: persistedData.acceptedQualityFindings,
   isAdmin: window.localStorage.getItem("amiga-admin-session") === "true",
   editingTitle: "",
@@ -162,10 +161,20 @@ async function init() {
   syncAdminUi();
 
   try {
-    await loadAdminDataFile();
-    const csvText = await fetchTextWithRetry("./games.csv");
-    state.rawGames = [...parseCsv(csvText), ...state.customGames.map(serializeCustomGame)].map(normalizeGame);
-    state.games = state.rawGames.map((game) => applyOverrideToGame(game));
+    const loadedCanonicalCollection = await loadCollectionData();
+
+    if (!loadedCanonicalCollection) {
+      if (persistedData.collection.length) {
+        state.baseGames = persistedData.collection.map(normalizeStoredGame);
+        state.rawGames = state.baseGames.map(cloneGame);
+      } else {
+        const csvText = await fetchTextWithRetry("./games.csv");
+        state.baseGames = parseCsv(csvText).map(normalizeGame);
+        state.rawGames = state.baseGames.map(cloneGame);
+      }
+    }
+
+    state.games = state.rawGames.map(cloneGame);
     loadBoxartMap();
     loadLemonRatingsMap();
     loadReviewsMap();
@@ -173,10 +182,33 @@ async function init() {
     render();
   } catch (error) {
     elements.collectionSummary.innerHTML = `
-      <strong>The CSV file could not be loaded automatically.</strong>
-      <span>Open the page through a simple local web server so the filters can work properly, for example with <code>python3 -m http.server</code> in the project folder.</span>
+      <strong>The collection data could not be loaded automatically.</strong>
+      <span>Open the page through a simple local web server so the collection files can be read properly, for example with <code>python3 -m http.server</code> in the project folder.</span>
     `;
     console.error(error);
+  }
+}
+
+async function loadCollectionData() {
+  try {
+    const response = await fetchTextWithRetry(COLLECTION_DATA_URL, 1);
+    const filePayload = JSON.parse(response);
+
+    if (!isValidCollectionData(filePayload)) {
+      return false;
+    }
+
+    const selectedPayload = selectPreferredCollectionPayload(filePayload, persistedData);
+    state.baseGames = filePayload.collection.map(normalizeStoredGame);
+    state.rawGames = selectedPayload.collection.map(normalizeStoredGame);
+    state.acceptedQualityFindings = mergeAcceptedQualityFindings(
+      filePayload.acceptedQualityFindings,
+      persistedData.acceptedQualityFindings,
+    );
+    return true;
+  } catch (error) {
+    console.warn("games.json could not be loaded on startup.", error);
+    return false;
   }
 }
 
@@ -186,9 +218,9 @@ async function loadBoxartMap() {
     state.boxartMap = JSON.parse(response);
     state.rawGames = state.rawGames.map((game) => ({
       ...game,
-      boxartPath: getBoxartPath(game.title),
+      boxartPath: cleanText(game.boxartPath) || getBoxartPath(game.title),
     }));
-    state.games = state.rawGames.map((game) => applyOverrideToGame(game));
+    state.games = state.rawGames.map(cloneGame);
     render();
   } catch (error) {
     console.warn("Boxart map could not be loaded on startup.", error);
@@ -201,9 +233,9 @@ async function loadLemonRatingsMap() {
     state.lemonRatingsMap = JSON.parse(response);
     state.rawGames = state.rawGames.map((game) => ({
       ...game,
-      lemonRating: getLemonRating(game.title),
+      lemonRating: cleanText(game.lemonRating) || getLemonRating(game.title),
     }));
-    state.games = state.rawGames.map((game) => applyOverrideToGame(game));
+    state.games = state.rawGames.map(cloneGame);
     render();
   } catch (error) {
     console.warn("Lemon ratings map could not be loaded on startup.", error);
@@ -561,7 +593,60 @@ function normalizeGame(entry) {
     boxartPath,
   };
 
-  return applyOverrideToGame(baseGame);
+  return baseGame;
+}
+
+function normalizeStoredGame(entry) {
+  const title = cleanText(entry.title || entry.Title);
+  const publisher = cleanText(entry.publisher || entry.Publisher) || "Unknown publisher";
+  const developer = cleanText(entry.developer || entry.Developer) || publisher;
+  const platform = cleanText(entry.platform || entry.Platform) || "Amiga";
+  const releaseValue = entry.release ?? entry.Release;
+  const releaseYear = Number.parseInt(String(releaseValue || ""), 10);
+  const genres = Array.isArray(entry.genre)
+    ? entry.genre.map((value) => cleanText(value)).filter(Boolean)
+    : splitMultiValue(entry.genre || entry.Genre);
+  const complete = cleanText(entry.complete || entry.Complete);
+  const tested = cleanText(entry.tested || entry.Tested);
+  const top50RankValue = entry.top50Rank ?? entry["Top 50 Rank"];
+  const top50Rank = Number.parseInt(String(top50RankValue || ""), 10);
+  const lemonRating = cleanText(entry.lemonRating || entry["Lemon Rating"]);
+  const boxartPath = cleanText(entry.boxartPath) || getBoxartPath(title);
+
+  return {
+    title,
+    publisher,
+    developer,
+    platform,
+    release: Number.isNaN(releaseYear) ? null : releaseYear,
+    genres: genres.length ? genres : ["Other"],
+    primaryGenre: genres[0] || "Other",
+    rating: Number.parseInt(String(entry.rating || entry["My Rating"] || 0), 10) || 0,
+    complete,
+    completeState: getCompleteState(complete),
+    completeStateLabel:
+      getCompleteState(complete) === "complete"
+        ? "Complete"
+        : getCompleteState(complete) === "incomplete"
+          ? "Incomplete"
+          : "Unknown status",
+    edition: cleanText(entry.edition || entry.Edition) || "Unknown",
+    whdloadInstalled: cleanText(entry.whdloadInstalled || entry["WHDload Installed"]),
+    whdloadDoesNotExist: cleanText(entry.whdloadDoesNotExist || entry["WHDload does not exist"]),
+    tested,
+    testedState: getTestedState(tested),
+    chipset: cleanText(entry.chipset || entry.Chipset) || "Unknown",
+    boxSize: normalizeBoxSize(entry.boxSize || entry["Box Size"]),
+    copyProtection: cleanText(entry.copyProtection || entry["Copy Protection"]) || "Unknown",
+    paid: cleanText(entry.paid || entry.Paid),
+    sold: cleanText(entry.sold || entry.Sold),
+    holRarity: cleanText(entry.holRarity || entry["Hall of Light Rarity"]) || "Unknown",
+    top50Rank: Number.isNaN(top50Rank) ? null : top50Rank,
+    top50Comment: cleanText(entry.top50Comment || entry["Top 50 Comment"]),
+    isCustom: entry.isCustom === true || entry.__custom === true,
+    lemonRating,
+    boxartPath,
+  };
 }
 
 function cleanText(value) {
@@ -597,91 +682,6 @@ function formatPaidValue(value) {
 
   const amount = match[0].replace(",", ".");
   return `${amount} SEK`;
-}
-
-function serializeCustomGame(entry) {
-  return {
-    Title: cleanText(entry.Title || entry.title),
-    Platform: cleanText(entry.Platform || entry.platform) || "Amiga",
-    Developer: cleanText(entry.Developer || entry.developer),
-    Chipset: cleanText(entry.Chipset || entry.chipset),
-    Edition: cleanText(entry.Edition || entry.edition),
-    Release: cleanText(entry.Release || entry.release),
-    Publisher: cleanText(entry.Publisher || entry.publisher),
-    "Box Size": cleanText(entry["Box Size"] || entry.boxSize),
-    Genre: cleanText(entry.Genre || entry.genreOverride || entry.primaryGenre),
-    "WHDload Installed": cleanText(entry["WHDload Installed"] || entry.whdloadInstalled),
-    "WHDload does not exist": cleanText(entry["WHDload does not exist"] || entry.whdloadDoesNotExist),
-    Tested: cleanText(entry.Tested || entry.tested),
-    Complete: cleanText(entry.Complete || entry.complete),
-    "Copy Protection": cleanText(entry["Copy Protection"] || entry.copyProtection),
-    Paid: cleanText(entry.Paid || entry.paid),
-    Sold: cleanText(entry.Sold || entry.sold),
-    "Top 50 Comment": cleanText(entry["Top 50 Comment"] || entry.top50Comment),
-    boxartPath: cleanText(entry.boxartPath),
-    __custom: true,
-  };
-}
-
-function saveCustomGame(override) {
-  const record = serializeCustomGame({
-    Title: override.title,
-    Release: override.release,
-    Publisher: override.publisher,
-    Developer: override.developer,
-    Genre: override.genreOverride || override.primaryGenre,
-    "Box Size": override.boxSize,
-    Chipset: override.chipset,
-    Edition: override.edition,
-    "WHDload Installed": override.whdloadInstalled,
-    Complete: override.complete,
-    Sold: override.sold,
-    "Top 50 Comment": override.top50Comment,
-    boxartPath: override.boxartPath,
-  });
-
-  const existingIndex = state.customGames.findIndex((game) => game.Title === state.editingSourceTitle);
-
-  if (existingIndex >= 0) {
-    state.customGames[existingIndex] = record;
-  } else {
-    state.customGames.push(record);
-  }
-
-  persistAppData();
-
-  const nonPersistentFields = {
-    holRarity: override.holRarity,
-    top50Rank: override.top50Rank,
-    top50Comment: override.top50Comment,
-    sold: override.sold,
-    lemonRating: override.lemonRating,
-  };
-
-  state.gameOverrides[record.Title] = {
-    primaryGenre: override.primaryGenre,
-    genreOverride: override.genreOverride,
-    publisher: override.publisher,
-    developer: override.developer,
-    release: override.release,
-    boxSize: override.boxSize,
-    chipset: override.chipset,
-    lemonRating: override.lemonRating,
-    whdloadInstalled: override.whdloadInstalled,
-    complete: override.complete,
-    edition: override.edition,
-    holRarity: nonPersistentFields.holRarity,
-    top50Rank: nonPersistentFields.top50Rank,
-    top50Comment: nonPersistentFields.top50Comment,
-    sold: nonPersistentFields.sold,
-    boxartPath: override.boxartPath,
-  };
-
-  if (state.editingSourceTitle && state.editingSourceTitle !== record.Title) {
-    delete state.gameOverrides[state.editingSourceTitle];
-  }
-
-  persistAppData();
 }
 
 function splitMultiValue(value) {
@@ -1693,64 +1693,6 @@ function getLemonRating(title) {
   return state.lemonRatingsMap[title] || "";
 }
 
-function applyOverrideToGame(game) {
-  const override = state.gameOverrides[game.title];
-
-  if (!override) {
-    return game;
-  }
-
-  const merged = {
-    ...game,
-    ...override,
-  };
-
-  const normalizedGenres = splitMultiValue(merged.genreOverride || merged.primaryGenre || merged.genres?.join(", "));
-
-  if (override.primaryGenre || override.genreOverride) {
-    merged.genres = normalizedGenres.length ? normalizedGenres : game.genres;
-    merged.primaryGenre = normalizedGenres[0] || game.primaryGenre;
-  }
-
-  if (override.release !== undefined) {
-    const releaseYear = Number.parseInt(String(override.release), 10);
-    merged.release = Number.isNaN(releaseYear) ? null : releaseYear;
-  }
-
-  if (override.complete !== undefined) {
-    merged.completeState = getCompleteState(merged.complete);
-    merged.completeStateLabel =
-      merged.completeState === "complete"
-        ? "Complete"
-        : merged.completeState === "incomplete"
-          ? "Incomplete"
-          : "Unknown status";
-  }
-
-  if (override.holRarity !== undefined) {
-    merged.holRarity = cleanText(merged.holRarity) || "Unknown";
-  }
-
-  if (override.top50Rank !== undefined) {
-    const parsedRank = Number.parseInt(String(override.top50Rank), 10);
-    merged.top50Rank = Number.isNaN(parsedRank) ? null : parsedRank;
-  }
-
-  if (override.top50Comment !== undefined) {
-    merged.top50Comment = cleanText(override.top50Comment);
-  }
-
-  if (override.sold !== undefined) {
-    merged.sold = cleanText(override.sold);
-  }
-
-  if (override.boxartPath !== undefined) {
-    merged.boxartPath = cleanText(override.boxartPath) || getBoxartPath(merged.title);
-  }
-
-  return merged;
-}
-
 function openAuthModal() {
   elements.authModal.classList.remove("hidden");
   elements.authModal.setAttribute("aria-hidden", "false");
@@ -1989,6 +1931,8 @@ function handleEditorSubmit(event) {
     return;
   }
 
+  const currentGame = state.games.find((game) => game.title === state.editingTitle);
+
   const override = {
     title: nextTitle,
     primaryGenre: cleanText(elements.editorGenre.value) || "Other",
@@ -2009,15 +1953,35 @@ function handleEditorSubmit(event) {
     top50Comment: cleanText(elements.editorTop50Comment.value),
   };
 
-  if (state.creatingGame || state.editingCustom) {
-    saveCustomGame(override);
-  } else {
-    delete override.title;
-    state.gameOverrides[state.editingTitle] = override;
-    persistAppData();
-  }
+  const collectionRecord = {
+    ...buildCollectionRecord(currentGame || {}),
+    title: nextTitle,
+    platform: currentGame?.platform || "Amiga",
+    publisher: override.publisher,
+    developer: override.developer,
+    release: override.release,
+    genre: override.genreOverride ? splitMultiValue(override.genreOverride) : [override.primaryGenre],
+    boxSize: override.boxSize,
+    chipset: override.chipset,
+    complete: override.complete,
+    edition: override.edition,
+    whdloadInstalled: override.whdloadInstalled,
+    whdloadDoesNotExist: currentGame?.whdloadDoesNotExist || "",
+    tested: currentGame?.tested || "",
+    copyProtection: currentGame?.copyProtection || "",
+    paid: currentGame?.paid || "",
+    sold: override.sold,
+    holRarity: override.holRarity,
+    top50Rank: override.top50Rank,
+    top50Comment: override.top50Comment,
+    lemonRating: override.lemonRating,
+    boxartPath: override.boxartPath,
+    isCustom: currentGame?.isCustom === true || state.creatingGame || state.editingCustom,
+  };
 
-  rebuildRawGames();
+  upsertRawGame(collectionRecord, state.editingTitle);
+  persistAppData();
+  reapplyGames();
   closeEditorModal();
 }
 
@@ -2032,28 +1996,32 @@ function resetEditedGame() {
   }
 
   if (state.editingCustom) {
-    state.customGames = state.customGames.filter((game) => game.Title !== state.editingSourceTitle);
-    delete state.gameOverrides[state.editingSourceTitle];
+    state.rawGames = state.rawGames.filter((game) => game.title !== state.editingSourceTitle);
     persistAppData();
-    rebuildRawGames();
+    reapplyGames();
     closeEditorModal();
     return;
   }
 
-  delete state.gameOverrides[state.editingTitle];
+  const baseGame = state.baseGames.find((game) => game.title === state.editingTitle);
+
+  if (baseGame) {
+    upsertRawGame(buildCollectionRecord(baseGame), state.editingTitle);
+  }
+
   persistAppData();
-  rebuildRawGames();
+  reapplyGames();
   closeEditorModal();
 }
 
 function reapplyGames() {
-  state.games = state.rawGames.map((game) => applyOverrideToGame(game));
+  state.games = state.rawGames.map(cloneGame);
   hydrateFilters();
   render();
 }
 
 function persistAppData() {
-  const payload = buildAdminDataPayload();
+  const payload = buildCollectionDataPayload();
 
   window.localStorage.setItem(APP_STORAGE_KEY, JSON.stringify(payload));
   window.localStorage.setItem(APP_STORAGE_BACKUP_KEY, JSON.stringify(payload));
@@ -2099,10 +2067,10 @@ function exportBackupJson() {
     return;
   }
 
-  const payload = buildAdminDataPayload();
+  const payload = buildCollectionDataPayload();
 
   downloadFile(
-    "admin-data.json",
+    "games.json",
     `${JSON.stringify(payload, null, 2)}\n`,
     "application/json;charset=utf-8",
   );
@@ -2124,93 +2092,74 @@ async function handleImportBackupFile(event) {
     const rawText = await file.text();
     const payload = JSON.parse(rawText);
 
-    if (!isValidImportBackup(payload)) {
-      window.alert("The selected backup file is not valid for this collection.");
+    if (!isValidCollectionData(payload) && !isValidImportBackup(payload)) {
+      window.alert("The selected JSON file is not valid for this collection.");
       return;
     }
 
     const shouldImport = window.confirm(
-      "Importing this admin-data file will replace the current admin data in the browser. Do you want to continue?",
+      "Importing this games file will replace the current collection data in the browser. Do you want to continue?",
     );
 
     if (!shouldImport) {
       return;
     }
 
-    state.customGames = payload.customGames;
-    state.gameOverrides = payload.gameOverrides;
-    state.acceptedQualityFindings = Array.isArray(payload.acceptedQualityFindings) ? payload.acceptedQualityFindings : [];
-    persistAppData();
-    rebuildRawGames();
-    window.alert("Admin data imported successfully.");
-  } catch (error) {
-    console.error(error);
-    window.alert("The admin-data file could not be imported.");
-  }
-}
-
-function rebuildRawGames() {
-  state.rawGames = [...state.rawGames.filter((game) => !game.isCustom), ...state.customGames.map(serializeCustomGame).map(normalizeGame)];
-  reapplyGames();
-}
-
-function buildAdminDataPayload() {
-  return {
-    version: APP_STORAGE_VERSION,
-    savedAt: new Date().toISOString(),
-    customGames: state.customGames,
-    gameOverrides: state.gameOverrides,
-    acceptedQualityFindings: state.acceptedQualityFindings,
-    collection: state.games.map((game) => ({
-      title: game.title,
-      platform: game.platform,
-      publisher: game.publisher,
-      developer: game.developer,
-      release: game.release,
-      genre: game.genres,
-      boxSize: game.boxSize,
-      chipset: game.chipset,
-      complete: game.complete,
-      edition: game.edition,
-      whdloadInstalled: game.whdloadInstalled,
-      whdloadDoesNotExist: game.whdloadDoesNotExist,
-      tested: game.tested,
-      copyProtection: game.copyProtection,
-      paid: game.paid,
-      sold: game.sold,
-      holRarity: game.holRarity,
-      top50Rank: game.top50Rank,
-      top50Comment: game.top50Comment,
-      lemonRating: game.lemonRating,
-      isCustom: game.isCustom === true,
-    })),
-  };
-}
-
-async function loadAdminDataFile() {
-  try {
-    const response = await fetchTextWithRetry(ADMIN_DATA_URL, 1);
-    const payload = JSON.parse(response);
-
-    if (!isValidImportBackup(payload) || !hasAdminDataContent(payload)) {
+    if (isValidCollectionData(payload)) {
+      state.rawGames = payload.collection.map(normalizeStoredGame);
+      state.baseGames = state.rawGames.map(cloneGame);
+      state.acceptedQualityFindings = Array.isArray(payload.acceptedQualityFindings) ? payload.acceptedQualityFindings : [];
+      persistAppData();
+      reapplyGames();
+      window.alert("Collection data imported successfully.");
       return;
     }
 
-    state.customGames = payload.customGames;
-    state.gameOverrides = payload.gameOverrides;
     state.acceptedQualityFindings = Array.isArray(payload.acceptedQualityFindings) ? payload.acceptedQualityFindings : [];
+    state.rawGames = buildCollectionFromLegacyAdminData(state.baseGames, payload).map(normalizeStoredGame);
     persistAppData();
+    reapplyGames();
+    window.alert("Legacy admin data imported successfully.");
   } catch (error) {
-    console.warn("admin-data.json could not be loaded on startup.", error);
+    console.error(error);
+    window.alert("The JSON file could not be imported.");
   }
 }
 
-function hasAdminDataContent(payload) {
-  return Boolean(
-    (Array.isArray(payload.customGames) && payload.customGames.length > 0) ||
-      (payload.gameOverrides && Object.keys(payload.gameOverrides).length > 0) ||
-      (Array.isArray(payload.acceptedQualityFindings) && payload.acceptedQualityFindings.length > 0),
-  );
+function buildCollectionDataPayload() {
+  return {
+    version: APP_STORAGE_VERSION,
+    savedAt: new Date().toISOString(),
+    acceptedQualityFindings: state.acceptedQualityFindings,
+    collection: state.rawGames.map(buildCollectionRecord),
+  };
+}
+
+function buildCollectionRecord(game) {
+  return {
+    title: game.title,
+    platform: game.platform,
+    publisher: game.publisher,
+    developer: game.developer,
+    release: game.release,
+    genre: game.genres,
+    boxSize: game.boxSize,
+    chipset: game.chipset,
+    complete: game.complete,
+    edition: game.edition,
+    whdloadInstalled: game.whdloadInstalled,
+    whdloadDoesNotExist: game.whdloadDoesNotExist,
+    tested: game.tested,
+    copyProtection: game.copyProtection,
+    paid: game.paid,
+    sold: game.sold,
+    holRarity: game.holRarity,
+    top50Rank: game.top50Rank,
+    top50Comment: game.top50Comment,
+    lemonRating: game.lemonRating,
+    boxartPath: game.boxartPath,
+    isCustom: game.isCustom === true,
+  };
 }
 
 function normalizeCompleteSelect(value) {
@@ -2269,19 +2218,6 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-function loadStorageJson(key, fallback) {
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
-  } catch (error) {
-    return fallback;
-  }
-}
-
-function saveStorageJson(key, value) {
-  window.localStorage.setItem(key, JSON.stringify(value));
-}
-
 function loadAppDataStore() {
   const primary = readJsonFromStorage(APP_STORAGE_KEY);
 
@@ -2299,8 +2235,7 @@ function loadAppDataStore() {
   const migrated = {
     version: APP_STORAGE_VERSION,
     savedAt: new Date().toISOString(),
-    customGames: loadStorageJson("amiga-custom-games", []),
-    gameOverrides: loadStorageJson("amiga-game-overrides", {}),
+    collection: [],
     acceptedQualityFindings: [],
   };
 
@@ -2318,14 +2253,22 @@ function readJsonFromStorage(key) {
   }
 }
 
+function isValidCollectionData(value) {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      Array.isArray(value.collection) &&
+      value.collection.every((entry) => entry && typeof entry === "object" && typeof cleanText(entry.title || entry.Title) === "string"),
+  );
+}
+
 function isValidAppDataStore(value) {
   return Boolean(
     value &&
       typeof value === "object" &&
-      Array.isArray(value.customGames) &&
+      Array.isArray(value.collection) &&
       Array.isArray(value.acceptedQualityFindings) &&
-      value.gameOverrides &&
-      typeof value.gameOverrides === "object",
+      value.collection.every((entry) => entry && typeof entry === "object"),
   );
 }
 
@@ -2341,6 +2284,92 @@ function isValidImportBackup(value) {
   return value.customGames.every(
     (entry) => entry && typeof entry === "object" && typeof cleanText(entry.Title || entry.title) === "string",
   );
+}
+
+function selectPreferredCollectionPayload(filePayload, localPayload) {
+  if (!isValidCollectionData(localPayload) || !localPayload.collection.length) {
+    return filePayload;
+  }
+
+  const fileTime = Date.parse(filePayload.savedAt || "");
+  const localTime = Date.parse(localPayload.savedAt || "");
+
+  if (Number.isFinite(localTime) && (!Number.isFinite(fileTime) || localTime > fileTime)) {
+    return {
+      ...localPayload,
+      acceptedQualityFindings: mergeAcceptedQualityFindings(
+        filePayload.acceptedQualityFindings,
+        localPayload.acceptedQualityFindings,
+      ),
+    };
+  }
+
+  return filePayload;
+}
+
+function mergeAcceptedQualityFindings(...lists) {
+  return [...new Set(lists.flatMap((list) => (Array.isArray(list) ? list : [])))];
+}
+
+function cloneGame(game) {
+  return {
+    ...game,
+    genres: Array.isArray(game.genres) ? [...game.genres] : [],
+  };
+}
+
+function upsertRawGame(record, previousTitle = "") {
+  const normalizedRecord = normalizeStoredGame(record);
+  const targetTitle = cleanText(previousTitle || normalizedRecord.title);
+  const index = state.rawGames.findIndex((game) => game.title === targetTitle);
+
+  if (index >= 0) {
+    state.rawGames[index] = normalizedRecord;
+  } else {
+    state.rawGames.push(normalizedRecord);
+  }
+}
+
+function buildCollectionFromLegacyAdminData(baseGames, payload) {
+  const gamesByTitle = new Map(baseGames.map((game) => [game.title, cloneGame(game)]));
+
+  for (const customGame of Array.isArray(payload.customGames) ? payload.customGames : []) {
+    const normalizedCustomGame = normalizeGame({ ...customGame, __custom: true });
+    gamesByTitle.set(normalizedCustomGame.title, normalizedCustomGame);
+  }
+
+  for (const [title, override] of Object.entries(payload.gameOverrides || {})) {
+    const current = gamesByTitle.get(title);
+
+    if (!current) {
+      continue;
+    }
+
+    const merged = normalizeStoredGame({
+      ...buildCollectionRecord(current),
+      title: override.title || current.title,
+      publisher: override.publisher ?? current.publisher,
+      developer: override.developer ?? current.developer,
+      release: override.release ?? current.release,
+      genre: override.genreOverride || override.primaryGenre || current.genres,
+      boxSize: override.boxSize ?? current.boxSize,
+      chipset: override.chipset ?? current.chipset,
+      lemonRating: override.lemonRating ?? current.lemonRating,
+      whdloadInstalled: override.whdloadInstalled ?? current.whdloadInstalled,
+      complete: override.complete ?? current.complete,
+      edition: override.edition ?? current.edition,
+      holRarity: override.holRarity ?? current.holRarity,
+      top50Rank: override.top50Rank ?? current.top50Rank,
+      top50Comment: override.top50Comment ?? current.top50Comment,
+      sold: override.sold ?? current.sold,
+      boxartPath: override.boxartPath ?? current.boxartPath,
+    });
+
+    gamesByTitle.delete(title);
+    gamesByTitle.set(merged.title, merged);
+  }
+
+  return [...gamesByTitle.values()].map(buildCollectionRecord);
 }
 
 function convertRowsToCsv(rows) {
