@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>My Amiga Games</title>
-    <link rel="stylesheet" href="./styles.css?v=20260408g" />
+    <link rel="stylesheet" href="./styles.css?v=20260408k" />
   </head>
   <body>
     <div class="page-shell">
@@ -37,12 +37,26 @@
           </span>
           <span class="desktop-icon__label">Gallery</span>
         </button>
+        <button class="desktop-icon desktop-icon--drawer desktop-icon--shelf" id="shelf-nav" type="button">
+          <span class="desktop-icon__art" aria-hidden="true">
+            <span class="desktop-icon__body"></span>
+            <span class="desktop-icon__slot"></span>
+          </span>
+          <span class="desktop-icon__label">Shelf Room</span>
+        </button>
         <button class="desktop-icon desktop-icon--drawer desktop-icon--quality admin-only hidden" id="quality-nav" type="button">
           <span class="desktop-icon__art" aria-hidden="true">
             <span class="desktop-icon__body"></span>
             <span class="desktop-icon__slot"></span>
           </span>
           <span class="desktop-icon__label">Data Quality</span>
+        </button>
+        <button class="desktop-icon desktop-icon--drawer desktop-icon--value admin-only hidden" id="value-nav" type="button">
+          <span class="desktop-icon__art" aria-hidden="true">
+            <span class="desktop-icon__body"></span>
+            <span class="desktop-icon__slot"></span>
+          </span>
+          <span class="desktop-icon__label">Value Review</span>
         </button>
         <button class="desktop-icon desktop-icon--disk desktop-icon--auth" id="auth-toggle" type="button">
           <span class="desktop-icon__art" aria-hidden="true">
@@ -273,6 +287,26 @@
         </section>
       </main>
 
+      <main class="shelf-page hidden" id="shelf-page">
+        <section class="stats-screen">
+          <div class="panel-chrome panel-chrome--compact">
+            <span class="window-dot"></span>
+            <span class="window-title">Shelf Room</span>
+            <span class="window-lines" aria-hidden="true"></span>
+            <span class="window-gadget window-gadget--filled"></span>
+            <span class="window-gadget"></span>
+          </div>
+          <div class="stats-screen__header">
+            <div>
+              <p class="eyebrow">Collector Display</p>
+              <h2>Shelf Room</h2>
+            </div>
+          </div>
+          <div class="collection-summary" id="shelf-summary"></div>
+          <section class="shelf-room" id="shelf-room"></section>
+        </section>
+      </main>
+
       <main class="game-page hidden" id="game-page">
         <section class="stats-screen">
           <div id="game-page-content"></div>
@@ -296,6 +330,26 @@
           </div>
           <div class="collection-summary" id="quality-summary"></div>
           <section class="quality-grid" id="quality-grid"></section>
+        </section>
+      </main>
+
+      <main class="value-page hidden" id="value-page">
+        <section class="stats-screen">
+          <div class="panel-chrome panel-chrome--compact">
+            <span class="window-dot"></span>
+            <span class="window-title">Value Review</span>
+            <span class="window-lines" aria-hidden="true"></span>
+            <span class="window-gadget window-gadget--filled"></span>
+            <span class="window-gadget"></span>
+          </div>
+          <div class="stats-screen__header">
+            <div>
+              <p class="eyebrow">Admin Valuation</p>
+              <h2>Value Review</h2>
+            </div>
+          </div>
+          <div class="collection-summary" id="value-summary"></div>
+          <section class="quality-grid" id="value-grid"></section>
         </section>
       </main>
     </div>
@@ -481,6 +535,10 @@
               </select>
             </label>
             <label class="field">
+              <span>Value</span>
+              <input id="editor-value" type="text" />
+            </label>
+            <label class="field">
               <span>Top 50 Rank</span>
               <input id="editor-top50-rank" type="number" min="1" max="50" />
             </label>
@@ -547,6 +605,9 @@
                 <a class="details-link" id="details-game-link" href="#">
                   Open own page
                 </a>
+                <button class="details-link details-link--button" id="details-trade-link" type="button">
+                  Request Trade
+                </button>
                 <a class="details-link" id="details-lemon-link" href="#" target="_blank" rel="noreferrer noopener">
                   Lemon Amiga
                 </a>
@@ -596,6 +657,10 @@
                     <div class="review-row__score" id="details-paid"></div>
                   </div>
                   <div class="review-row">
+                    <div class="review-row__source">Value</div>
+                    <div class="review-row__score" id="details-value"></div>
+                  </div>
+                  <div class="review-row">
                     <div class="review-row__source">Sold</div>
                     <div class="review-row__score" id="details-sold"></div>
                   </div>
@@ -607,6 +672,45 @@
       </div>
     </div>
 
-    <script type="module" src="./app.js?v=20260408g"></script>
+    <div class="modal-shell hidden" id="trade-modal" aria-hidden="true">
+      <div class="modal-panel">
+        <div class="panel-chrome panel-chrome--compact">
+          <span class="window-dot"></span>
+          <span class="window-title">Request Trade</span>
+          <span class="window-lines" aria-hidden="true"></span>
+          <span class="window-gadget window-gadget--filled"></span>
+          <button class="window-gadget window-gadget--close" id="trade-close" type="button" aria-label="Close trade request"></button>
+        </div>
+        <form class="modal-form" id="trade-form">
+          <p class="modal-copy" id="trade-copy"></p>
+          <label class="field">
+            <span>Your Game</span>
+            <input id="trade-offer-title" type="text" placeholder="For example Another World" required />
+          </label>
+          <label class="field field--checkbox">
+            <span><input id="trade-complete" type="checkbox" /> Complete</span>
+          </label>
+          <label class="field field--checkbox">
+            <span><input id="trade-tested" type="checkbox" /> Tested</span>
+          </label>
+          <label class="field">
+            <span>Condition</span>
+            <select id="trade-condition">
+              <option value="New">New</option>
+              <option value="Very Good">Very Good</option>
+              <option value="Good" selected>Good</option>
+              <option value="Fair">Fair</option>
+              <option value="Poor">Poor</option>
+            </select>
+          </label>
+          <div class="modal-actions">
+            <button class="button button--ghost" id="trade-cancel" type="button">Cancel</button>
+            <button class="button button--primary" type="submit">Create Email</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script type="module" src="./app.js?v=20260408k"></script>
   </body>
 </html>

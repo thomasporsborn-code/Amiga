@@ -1,4 +1,5 @@
 const ADMIN_PASSWORD = "amiga";
+const TRADE_REQUEST_EMAIL = "";
 const CHART_COLORS = ["#0058ac", "#2d82d4", "#67a9e4", "#90c2ef", "#f29f3f", "#e55c57", "#7fb069"];
 const APP_STORAGE_KEY = "amiga-data-store";
 const APP_STORAGE_BACKUP_KEY = "amiga-data-store-backup";
@@ -54,13 +55,17 @@ const elements = {
   statsNav: document.querySelector("#stats-nav"),
   top50Nav: document.querySelector("#top50-nav"),
   galleryNav: document.querySelector("#gallery-nav"),
+  shelfNav: document.querySelector("#shelf-nav"),
   qualityNav: document.querySelector("#quality-nav"),
+  valueNav: document.querySelector("#value-nav"),
   catalogPage: document.querySelector("#catalog-page"),
   statsPage: document.querySelector("#stats-page"),
   top50Page: document.querySelector("#top50-page"),
   galleryPage: document.querySelector("#gallery-page"),
+  shelfPage: document.querySelector("#shelf-page"),
   gamePage: document.querySelector("#game-page"),
   qualityPage: document.querySelector("#quality-page"),
+  valuePage: document.querySelector("#value-page"),
   authModal: document.querySelector("#auth-modal"),
   authForm: document.querySelector("#auth-form"),
   authPassword: document.querySelector("#auth-password"),
@@ -90,6 +95,7 @@ const elements = {
   editorComplete: document.querySelector("#editor-complete"),
   editorEdition: document.querySelector("#editor-edition"),
   editorHolRarity: document.querySelector("#editor-hol-rarity"),
+  editorValue: document.querySelector("#editor-value"),
   editorTop50Rank: document.querySelector("#editor-top50-rank"),
   editorSold: document.querySelector("#editor-sold"),
   editorTop50Comment: document.querySelector("#editor-top50-comment"),
@@ -109,6 +115,7 @@ const elements = {
   detailsHolRarity: document.querySelector("#details-hol-rarity"),
   detailsLemonRating: document.querySelector("#details-lemon-rating"),
   detailsGameLink: document.querySelector("#details-game-link"),
+  detailsTradeLink: document.querySelector("#details-trade-link"),
   detailsLemonLink: document.querySelector("#details-lemon-link"),
   detailsHolLink: document.querySelector("#details-hol-link"),
   detailsWhdload: document.querySelector("#details-whdload"),
@@ -117,9 +124,19 @@ const elements = {
   detailsOriginal: document.querySelector("#details-original"),
   detailsTested: document.querySelector("#details-tested"),
   detailsPaid: document.querySelector("#details-paid"),
+  detailsValue: document.querySelector("#details-value"),
   detailsSold: document.querySelector("#details-sold"),
   detailsReviewAverage: document.querySelector("#details-review-average"),
   detailsReviewList: document.querySelector("#details-review-list"),
+  tradeModal: document.querySelector("#trade-modal"),
+  tradeForm: document.querySelector("#trade-form"),
+  tradeCopy: document.querySelector("#trade-copy"),
+  tradeClose: document.querySelector("#trade-close"),
+  tradeCancel: document.querySelector("#trade-cancel"),
+  tradeOfferTitle: document.querySelector("#trade-offer-title"),
+  tradeComplete: document.querySelector("#trade-complete"),
+  tradeTested: document.querySelector("#trade-tested"),
+  tradeCondition: document.querySelector("#trade-condition"),
   heroStats: document.querySelector("#hero-stats"),
   heroLatest: document.querySelector("#hero-latest"),
   wishlistPanel: document.querySelector("#wishlist-panel"),
@@ -129,9 +146,13 @@ const elements = {
   top50List: document.querySelector("#top50-list"),
   gallerySummary: document.querySelector("#gallery-summary"),
   galleryGrid: document.querySelector("#gallery-grid"),
+  shelfSummary: document.querySelector("#shelf-summary"),
+  shelfRoom: document.querySelector("#shelf-room"),
   gamePageContent: document.querySelector("#game-page-content"),
   qualitySummary: document.querySelector("#quality-summary"),
   qualityGrid: document.querySelector("#quality-grid"),
+  valueSummary: document.querySelector("#value-summary"),
+  valueGrid: document.querySelector("#value-grid"),
   listHeader: document.querySelector("#list-header"),
   grid: document.querySelector("#game-grid"),
   emptyState: document.querySelector("#empty-state"),
@@ -310,8 +331,20 @@ function bindEvents() {
     syncPageView();
   });
 
+  elements.shelfNav.addEventListener("click", () => {
+    state.currentPage = "shelf";
+    clearGameRoute();
+    syncPageView();
+  });
+
   elements.qualityNav.addEventListener("click", () => {
     state.currentPage = "quality";
+    clearGameRoute();
+    syncPageView();
+  });
+
+  elements.valueNav.addEventListener("click", () => {
+    state.currentPage = "value";
     clearGameRoute();
     syncPageView();
   });
@@ -372,6 +405,7 @@ function bindEvents() {
   elements.editorBoxartDropzone.addEventListener("dragleave", handleEditorBoxartDragLeave);
   elements.editorBoxartDropzone.addEventListener("drop", handleEditorBoxartDrop);
   elements.qualityGrid.addEventListener("click", handleQualityGridClick);
+  elements.valueGrid.addEventListener("click", handleValueGridClick);
   elements.editorModal.addEventListener("click", (event) => {
     if (event.target === elements.editorModal) {
       closeEditorModal();
@@ -379,9 +413,18 @@ function bindEvents() {
   });
 
   elements.detailsClose.addEventListener("click", closeDetailsModal);
+  elements.detailsTradeLink.addEventListener("click", openTradeModal);
   elements.detailsModal.addEventListener("click", (event) => {
     if (event.target === elements.detailsModal) {
       closeDetailsModal();
+    }
+  });
+  elements.tradeForm.addEventListener("submit", handleTradeSubmit);
+  elements.tradeClose.addEventListener("click", closeTradeModal);
+  elements.tradeCancel.addEventListener("click", closeTradeModal);
+  elements.tradeModal.addEventListener("click", (event) => {
+    if (event.target === elements.tradeModal) {
+      closeTradeModal();
     }
   });
 
@@ -592,6 +635,11 @@ function normalizeGame(entry) {
   const boxSize = normalizeBoxSize(entry["Box Size"]);
   const copyProtection = cleanText(entry["Copy Protection"]) || "Unknown";
   const paid = cleanText(entry.Paid);
+  const value = cleanText(entry.Value);
+  const suggestedValue = cleanText(entry["Suggested Value"]);
+  const valueSource = cleanText(entry["Value Source"]);
+  const valueUpdated = cleanText(entry["Value Updated"]);
+  const valueSamples = Number.parseInt(String(entry["Value Samples"] || ""), 10);
   const sold = cleanText(entry.Sold);
   const holRarity = cleanText(entry["Hall of Light Rarity"]) || "Unknown";
   const top50Rank = Number.parseInt(entry["Top 50 Rank"], 10);
@@ -624,6 +672,11 @@ function normalizeGame(entry) {
     boxSize,
     copyProtection,
     paid,
+    value,
+    suggestedValue,
+    valueSource,
+    valueUpdated,
+    valueSamples: Number.isNaN(valueSamples) ? 0 : valueSamples,
     sold,
     holRarity,
     top50Rank: Number.isNaN(top50Rank) ? null : top50Rank,
@@ -679,6 +732,11 @@ function normalizeStoredGame(entry) {
     boxSize: normalizeBoxSize(entry.boxSize || entry["Box Size"]),
     copyProtection: cleanText(entry.copyProtection || entry["Copy Protection"]) || "Unknown",
     paid: cleanText(entry.paid || entry.Paid),
+    value: cleanText(entry.value || entry.Value),
+    suggestedValue: cleanText(entry.suggestedValue || entry["Suggested Value"]),
+    valueSource: cleanText(entry.valueSource || entry["Value Source"]),
+    valueUpdated: cleanText(entry.valueUpdated || entry["Value Updated"]),
+    valueSamples: Number.parseInt(String(entry.valueSamples || entry["Value Samples"] || ""), 10) || 0,
     sold: cleanText(entry.sold || entry.Sold),
     holRarity: cleanText(entry.holRarity || entry["Hall of Light Rarity"]) || "Unknown",
     top50Rank: Number.isNaN(top50Rank) ? null : top50Rank,
@@ -830,8 +888,10 @@ function render() {
   renderGrid(filtered);
   renderTop50(top50Games);
   renderGallery(filtered);
+  renderShelfRoom(filtered);
   renderGamePage(routeGameTitle);
   renderQualityTools(qualityReport);
+  renderValueReview(filtered);
   syncPageView();
 }
 
@@ -1451,6 +1511,64 @@ function renderGallery(games) {
   });
 }
 
+function renderShelfRoom(games) {
+  const shelfGames = games.slice().sort((left, right) => {
+    const yearDelta = (left.release || 9999) - (right.release || 9999);
+    return yearDelta || left.title.localeCompare(right.title, "sv");
+  });
+
+  elements.shelfSummary.innerHTML = `
+    <div><strong>${shelfGames.length}</strong> games are currently arranged in the shelf room.</div>
+    <div>The room follows the active filters, but presents the collection like a physical display shelf.</div>
+  `;
+
+  if (!shelfGames.length) {
+    elements.shelfRoom.innerHTML = `
+      <article class="empty-state">
+        <h3>No games on the shelf right now</h3>
+        <p>Try broadening the filters to refill the room with more boxes.</p>
+      </article>
+    `;
+    return;
+  }
+
+  const shelfRows = chunkArray(shelfGames, 7);
+
+  elements.shelfRoom.innerHTML = shelfRows
+    .map(
+      (row, rowIndex) => `
+        <section class="shelf-row" aria-label="Shelf ${rowIndex + 1}">
+          <div class="shelf-row__surface">
+            ${row
+              .map(
+                (game) => `
+                  <button class="shelf-item" type="button" data-shelf-title="${escapeHtml(game.title)}" aria-label="Open ${escapeHtml(game.title)} details">
+                    <span class="shelf-item__box">
+                      ${
+                        game.boxartPath
+                          ? `<img class="shelf-item__image" src="${escapeHtml(game.boxartPath)}" alt="${escapeHtml(game.title)} boxart" />`
+                          : `<span class="shelf-item__placeholder">BOX</span>`
+                      }
+                    </span>
+                    <span class="shelf-item__label">${escapeHtml(game.title)}</span>
+                  </button>
+                `,
+              )
+              .join("")}
+          </div>
+          <div class="shelf-row__lip" aria-hidden="true"></div>
+        </section>
+      `,
+    )
+    .join("");
+
+  elements.shelfRoom.querySelectorAll("[data-shelf-title]").forEach((node) => {
+    node.addEventListener("click", () => {
+      openDetailsModal(node.dataset.shelfTitle);
+    });
+  });
+}
+
 function renderGamePage(title) {
   const game = state.games.find((entry) => entry.title === title);
 
@@ -1563,6 +1681,10 @@ function renderGamePage(title) {
                       <div class="review-row__score">${escapeHtml(formatPaidValue(game.paid))}</div>
                     </div>
                     <div class="review-row">
+                      <div class="review-row__source">Value</div>
+                      <div class="review-row__score">${escapeHtml(game.value || "No data")}</div>
+                    </div>
+                    <div class="review-row">
                       <div class="review-row__source">Sold</div>
                       <div class="review-row__score">${escapeHtml(getSoldState(game.sold) ? "Yes" : "No")}</div>
                     </div>
@@ -1666,6 +1788,67 @@ function renderQualityTools(report) {
                 .join("")}</div>`
             : `<p class="chart-panel__empty">${escapeHtml(section.empty)}</p>`
         }
+      </article>
+    `)
+    .join("");
+}
+
+function renderValueReview(filteredGames) {
+  const candidates = filteredGames
+    .filter((game) => cleanText(game.suggestedValue))
+    .sort((left, right) => {
+      const leftMissing = cleanText(left.value) ? 1 : 0;
+      const rightMissing = cleanText(right.value) ? 1 : 0;
+      return leftMissing - rightMissing || left.title.localeCompare(right.title, "sv");
+    });
+
+  const missingValueCount = filteredGames.filter((game) => !cleanText(game.value)).length;
+
+  elements.valueSummary.innerHTML = `
+    <div><strong>${candidates.length}</strong> games have a suggested value in the current selection.</div>
+    <div><strong>${missingValueCount}</strong> games in the current selection still have no confirmed value.</div>
+  `;
+
+  if (!candidates.length) {
+    elements.valueGrid.innerHTML = `
+      <article class="quality-panel">
+        <h3>No value suggestions available</h3>
+        <p class="chart-panel__empty">Run the value import script or broaden the filters to show more suggested values.</p>
+      </article>
+    `;
+    return;
+  }
+
+  elements.valueGrid.innerHTML = candidates
+    .map((game) => `
+      <article class="quality-panel value-panel">
+        <h3>${escapeHtml(game.title)}</h3>
+        <div class="value-panel__meta">
+          <span>${escapeHtml(game.publisher)}</span>
+          <span>${escapeHtml(String(game.release || "Unknown"))}</span>
+        </div>
+        <div class="value-panel__grid">
+          <div>
+            <div class="value-panel__label">Current Value</div>
+            <div class="value-panel__value">${escapeHtml(game.value || "No data")}</div>
+          </div>
+          <div>
+            <div class="value-panel__label">Suggested Value</div>
+            <div class="value-panel__value">${escapeHtml(game.suggestedValue || "No suggestion")}</div>
+          </div>
+          <div>
+            <div class="value-panel__label">Samples</div>
+            <div class="value-panel__value">${escapeHtml(String(game.valueSamples || 0))}</div>
+          </div>
+          <div>
+            <div class="value-panel__label">Source</div>
+            <div class="value-panel__value">${escapeHtml(game.valueSource || "Unknown")}</div>
+          </div>
+        </div>
+        <div class="quality-list__actions">
+          <button class="quality-link" type="button" data-edit-title="${escapeHtml(game.title)}">Edit</button>
+          <button class="quality-link quality-link--accept" type="button" data-apply-suggested-value="${escapeHtml(game.title)}">Apply Suggested</button>
+        </div>
       </article>
     `)
     .join("");
@@ -1813,6 +1996,38 @@ function handleQualityGridClick(event) {
   }
 }
 
+function handleValueGridClick(event) {
+  if (!state.isAdmin) {
+    return;
+  }
+
+  const applyButton = event.target.closest("[data-apply-suggested-value]");
+
+  if (applyButton) {
+    applySuggestedValue(applyButton.dataset.applySuggestedValue);
+    return;
+  }
+
+  const editButton = event.target.closest("[data-edit-title]");
+
+  if (editButton) {
+    openEditorModal(editButton.dataset.editTitle);
+  }
+}
+
+function applySuggestedValue(title) {
+  const game = state.rawGames.find((entry) => entry.title === title);
+
+  if (!game || !cleanText(game.suggestedValue)) {
+    return;
+  }
+
+  game.value = cleanText(game.suggestedValue);
+  game.valueUpdated = new Date().toISOString().slice(0, 10);
+  persistAppData();
+  reapplyGames();
+}
+
 function acceptQualityFinding(fingerprint) {
   if (!fingerprint || state.acceptedQualityFindings.includes(fingerprint)) {
     return;
@@ -1828,20 +2043,26 @@ function syncPageView() {
   const isStats = state.currentPage === "stats";
   const isTop50 = state.currentPage === "top50";
   const isGallery = state.currentPage === "gallery";
+  const isShelf = state.currentPage === "shelf";
   const isGame = state.currentPage === "game";
   const isQuality = state.currentPage === "quality";
+  const isValue = state.currentPage === "value";
 
   elements.catalogPage.classList.toggle("hidden", !isCatalog);
   elements.statsPage.classList.toggle("hidden", !isStats);
   elements.top50Page.classList.toggle("hidden", !isTop50);
   elements.galleryPage.classList.toggle("hidden", !isGallery);
+  elements.shelfPage.classList.toggle("hidden", !isShelf);
   elements.gamePage.classList.toggle("hidden", !isGame);
   elements.qualityPage.classList.toggle("hidden", !isQuality);
+  elements.valuePage.classList.toggle("hidden", !isValue);
   elements.catalogNav.classList.toggle("is-active", isCatalog);
   elements.statsNav.classList.toggle("is-active", isStats);
   elements.top50Nav.classList.toggle("is-active", isTop50);
   elements.galleryNav.classList.toggle("is-active", isGallery);
+  elements.shelfNav.classList.toggle("is-active", isShelf);
   elements.qualityNav.classList.toggle("is-active", isQuality);
+  elements.valueNav.classList.toggle("is-active", isValue);
 }
 
 function countBy(items, field) {
@@ -2102,8 +2323,9 @@ function syncAdminUi() {
   elements.exportBackupButton.classList.toggle("hidden", !state.isAdmin);
   elements.importBackupButton.classList.toggle("hidden", !state.isAdmin);
   elements.qualityNav.classList.toggle("hidden", !state.isAdmin);
+  elements.valueNav.classList.toggle("hidden", !state.isAdmin);
 
-  if (!state.isAdmin && state.currentPage === "quality") {
+  if (!state.isAdmin && (state.currentPage === "quality" || state.currentPage === "value")) {
     state.currentPage = "catalog";
   }
 }
@@ -2134,6 +2356,7 @@ function openEditorModal(title) {
   elements.editorComplete.value = normalizeCompleteSelect(game.complete);
   elements.editorEdition.value = game.edition === "Unknown" ? "" : game.edition;
   elements.editorHolRarity.value = game.holRarity === "Unknown" ? "" : game.holRarity;
+  elements.editorValue.value = game.value || "";
   elements.editorTop50Rank.value = game.top50Rank || "";
   elements.editorSold.value = getSoldState(game.sold) ? "Yes" : "";
   elements.editorTop50Comment.value = game.top50Comment || "";
@@ -2162,6 +2385,7 @@ function openCreateGameModal() {
   elements.editorComplete.value = "";
   elements.editorEdition.value = "";
   elements.editorHolRarity.value = "";
+  elements.editorValue.value = "";
   elements.editorTop50Rank.value = "";
   elements.editorSold.value = "";
   elements.editorTop50Comment.value = "";
@@ -2212,6 +2436,7 @@ function openDetailsModal(title) {
   elements.detailsOriginal.textContent = game.edition.toLowerCase() === "original" ? "Yes" : "No";
   elements.detailsTested.textContent = game.tested || "No data";
   elements.detailsPaid.textContent = formatPaidValue(game.paid);
+  elements.detailsValue.textContent = game.value || "No data";
   elements.detailsSold.textContent = getSoldState(game.sold) ? "Yes" : "No";
   elements.detailsBoxartTitle.textContent = game.title;
   renderReviewPanel(game.title);
@@ -2242,6 +2467,67 @@ function closeDetailsModal() {
   state.detailsTitle = "";
   elements.detailsModal.classList.add("hidden");
   elements.detailsModal.setAttribute("aria-hidden", "true");
+}
+
+function openTradeModal() {
+  const game = state.games.find((entry) => entry.title === state.detailsTitle);
+
+  if (!game) {
+    return;
+  }
+
+  elements.tradeCopy.textContent = `Suggest a trade for ${game.title}. This will open your email app with a prepared message.`;
+  elements.tradeOfferTitle.value = "";
+  elements.tradeComplete.checked = false;
+  elements.tradeTested.checked = false;
+  elements.tradeCondition.value = "Good";
+  elements.tradeModal.classList.remove("hidden");
+  elements.tradeModal.setAttribute("aria-hidden", "false");
+  elements.tradeOfferTitle.focus();
+}
+
+function closeTradeModal() {
+  elements.tradeModal.classList.add("hidden");
+  elements.tradeModal.setAttribute("aria-hidden", "true");
+}
+
+function handleTradeSubmit(event) {
+  event.preventDefault();
+
+  const targetGame = state.games.find((entry) => entry.title === state.detailsTitle);
+
+  if (!targetGame) {
+    return;
+  }
+
+  const offeredGame = cleanText(elements.tradeOfferTitle.value);
+
+  if (!offeredGame) {
+    elements.tradeOfferTitle.focus();
+    return;
+  }
+
+  const completeLabel = elements.tradeComplete.checked ? "Yes" : "No";
+  const testedLabel = elements.tradeTested.checked ? "Yes" : "No";
+  const conditionLabel = cleanText(elements.tradeCondition.value) || "Good";
+  const subject = `Trade request for ${targetGame.title}`;
+  const body = [
+    `Hello,`,
+    ``,
+    `I would like to suggest a trade for: ${targetGame.title}`,
+    ``,
+    `Offered game: ${offeredGame}`,
+    `Complete: ${completeLabel}`,
+    `Tested: ${testedLabel}`,
+    `Condition: ${conditionLabel}`,
+    ``,
+    `Please let me know if you are interested.`,
+  ].join("\n");
+  const recipient = encodeURIComponent(TRADE_REQUEST_EMAIL);
+  const mailtoUrl = `mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+  window.location.href = mailtoUrl;
+  closeTradeModal();
 }
 
 function buildReviewPanelMarkup(game) {
@@ -2367,6 +2653,7 @@ function handleEditorSubmit(event) {
     complete: normalizeCompleteValue(elements.editorComplete.value),
     edition: cleanText(elements.editorEdition.value) || "Unknown",
     holRarity: cleanText(elements.editorHolRarity.value) || "Unknown",
+    value: cleanText(elements.editorValue.value),
     top50Rank: cleanText(elements.editorTop50Rank.value),
     sold: cleanText(elements.editorSold.value),
     top50Comment: cleanText(elements.editorTop50Comment.value),
@@ -2389,6 +2676,7 @@ function handleEditorSubmit(event) {
     tested: currentGame?.tested || "",
     copyProtection: currentGame?.copyProtection || "",
     paid: currentGame?.paid || "",
+    value: override.value,
     sold: override.sold,
     holRarity: override.holRarity,
     top50Rank: override.top50Rank,
@@ -2441,6 +2729,11 @@ function exportCollectionCsv() {
       Complete: game.complete || "",
       "Copy Protection": game.copyProtection || "",
       Paid: formatPaidValueForExport(game.paid),
+      Value: game.value || "",
+      "Suggested Value": game.suggestedValue || "",
+      "Value Samples": game.valueSamples || "",
+      "Value Source": game.valueSource || "",
+      "Value Updated": game.valueUpdated || "",
       Sold: game.sold || "",
       "Hall of Light Rarity": game.holRarity || "",
       "Top 50 Rank": game.top50Rank || "",
@@ -2545,6 +2838,11 @@ function buildCollectionRecord(game) {
     tested: game.tested,
     copyProtection: game.copyProtection,
     paid: game.paid,
+    value: game.value,
+    suggestedValue: game.suggestedValue,
+    valueSamples: game.valueSamples,
+    valueSource: game.valueSource,
+    valueUpdated: game.valueUpdated,
     sold: game.sold,
     holRarity: game.holRarity,
     top50Rank: game.top50Rank,
@@ -2706,6 +3004,16 @@ function selectPreferredCollectionPayload(filePayload, localPayload) {
 
 function mergeWishlist(...lists) {
   return [...new Set(lists.flatMap((list) => (Array.isArray(list) ? list : [])).map((item) => cleanText(item)).filter(Boolean))];
+}
+
+function chunkArray(items, size) {
+  const rows = [];
+
+  for (let index = 0; index < items.length; index += size) {
+    rows.push(items.slice(index, index + size));
+  }
+
+  return rows;
 }
 
 function mergeAcceptedQualityFindings(...lists) {
