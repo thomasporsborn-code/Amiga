@@ -1,6 +1,9 @@
 /node_modules
 .DS_Store
 *.log
+.env
+.env.*
+!.env.example
 
 # Local safety copies
 games.backup-before-merge-2026-04-07.csv
@@ -9,3 +12,4 @@ games.backup-before-merge-2026-04-07.csv
 abime-reviews.json
 lemon-ratings-report.json
 openretro-reviews-report.json
+value-research-ebay.json

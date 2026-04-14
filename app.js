@@ -34,6 +34,7 @@ const state = {
     publisher: "all",
     developer: "all",
     year: "all",
+    nostalgiaValue: "all",
     ratingMin: 0,
     ratingMax: 10,
     whdloadOnly: false,
@@ -96,6 +97,7 @@ const elements = {
   editorEdition: document.querySelector("#editor-edition"),
   editorHolRarity: document.querySelector("#editor-hol-rarity"),
   editorValue: document.querySelector("#editor-value"),
+  editorNostalgiaValue: document.querySelector("#editor-nostalgia-value"),
   editorTop50Rank: document.querySelector("#editor-top50-rank"),
   editorSold: document.querySelector("#editor-sold"),
   editorTop50Comment: document.querySelector("#editor-top50-comment"),
@@ -125,6 +127,7 @@ const elements = {
   detailsTested: document.querySelector("#details-tested"),
   detailsPaid: document.querySelector("#details-paid"),
   detailsValue: document.querySelector("#details-value"),
+  detailsNostalgiaValue: document.querySelector("#details-nostalgia-value"),
   detailsSold: document.querySelector("#details-sold"),
   detailsReviewAverage: document.querySelector("#details-review-average"),
   detailsReviewList: document.querySelector("#details-review-list"),
@@ -160,6 +163,8 @@ const elements = {
   publisherFilter: document.querySelector("#publisher-filter"),
   developerFilter: document.querySelector("#developer-filter"),
   yearFilter: document.querySelector("#year-filter"),
+  nostalgiaFilter: document.querySelector("#nostalgia-filter"),
+  nostalgiaFilterField: document.querySelector("#nostalgia-filter-field"),
   ratingRange: document.querySelector("#rating-range"),
   ratingMin: document.querySelector("#rating-min"),
   ratingMax: document.querySelector("#rating-max"),
@@ -453,6 +458,11 @@ function bindEvents() {
     render();
   });
 
+  elements.nostalgiaFilter.addEventListener("change", (event) => {
+    state.filters.nostalgiaValue = event.target.value;
+    render();
+  });
+
   elements.ratingMin.addEventListener("input", (event) => {
     const nextMin = Number.parseFloat(event.target.value);
     state.filters.ratingMin = Number.isNaN(nextMin) ? 0 : nextMin;
@@ -636,6 +646,7 @@ function normalizeGame(entry) {
   const copyProtection = cleanText(entry["Copy Protection"]) || "Unknown";
   const paid = cleanText(entry.Paid);
   const value = cleanText(entry.Value);
+  const nostalgiaValue = Number.parseInt(String(entry["Nostalgia Value"] || ""), 10);
   const suggestedValue = cleanText(entry["Suggested Value"]);
   const valueSource = cleanText(entry["Value Source"]);
   const valueUpdated = cleanText(entry["Value Updated"]);
@@ -673,6 +684,7 @@ function normalizeGame(entry) {
     copyProtection,
     paid,
     value,
+    nostalgiaValue: Number.isNaN(nostalgiaValue) ? null : nostalgiaValue,
     suggestedValue,
     valueSource,
     valueUpdated,
@@ -733,6 +745,7 @@ function normalizeStoredGame(entry) {
     copyProtection: cleanText(entry.copyProtection || entry["Copy Protection"]) || "Unknown",
     paid: cleanText(entry.paid || entry.Paid),
     value: cleanText(entry.value || entry.Value),
+    nostalgiaValue: Number.parseInt(String(entry.nostalgiaValue || entry["Nostalgia Value"] || ""), 10) || null,
     suggestedValue: cleanText(entry.suggestedValue || entry["Suggested Value"]),
     valueSource: cleanText(entry.valueSource || entry["Value Source"]),
     valueUpdated: cleanText(entry.valueUpdated || entry["Value Updated"]),
@@ -838,6 +851,7 @@ function resetFilters() {
     publisher: "all",
     developer: "all",
     year: "all",
+    nostalgiaValue: "all",
     ratingMin: 0,
     ratingMax: 10,
     whdloadOnly: false,
@@ -856,6 +870,7 @@ function resetFilters() {
   elements.publisherFilter.value = "all";
   elements.developerFilter.value = "all";
   elements.yearFilter.value = "all";
+  elements.nostalgiaFilter.value = "all";
   elements.ratingMin.value = "0";
   elements.ratingMax.value = "10";
   elements.whdloadOnly.checked = false;
@@ -918,6 +933,8 @@ function matchesFilters(game) {
     state.filters.developer === "all" || game.developer === state.filters.developer;
   const yearMatches =
     state.filters.year === "all" || String(game.release || "") === state.filters.year;
+  const nostalgiaMatches =
+    state.filters.nostalgiaValue === "all" || String(game.nostalgiaValue || "") === state.filters.nostalgiaValue;
   const hasActiveRatingFilter = state.filters.ratingMin > 0 || state.filters.ratingMax < 10;
   const lemonRating = Number.parseFloat(game.lemonRating);
   const ratingMatches =
@@ -957,6 +974,7 @@ function matchesFilters(game) {
     publisherMatches &&
     developerMatches &&
     yearMatches &&
+    nostalgiaMatches &&
     ratingMatches &&
     whdloadMatches &&
     completeMatches &&
@@ -1685,6 +1703,10 @@ function renderGamePage(title) {
                       <div class="review-row__score">${escapeHtml(game.value || "No data")}</div>
                     </div>
                     <div class="review-row">
+                      <div class="review-row__source">Nostalgia Value</div>
+                      <div class="review-row__score">${escapeHtml(game.nostalgiaValue ? String(game.nostalgiaValue) : "No data")}</div>
+                    </div>
+                    <div class="review-row">
                       <div class="review-row__source">Sold</div>
                       <div class="review-row__score">${escapeHtml(getSoldState(game.sold) ? "Yes" : "No")}</div>
                     </div>
@@ -2317,6 +2339,7 @@ function logoutAdmin() {
 function syncAdminUi() {
   elements.authToggleLabel.textContent = state.isAdmin ? "Admin Logout" : "Admin Login";
   elements.adminFilterGroup.classList.toggle("hidden", !state.isAdmin);
+  elements.nostalgiaFilterField.classList.toggle("hidden", !state.isAdmin);
   elements.detailsAdminPanel.classList.toggle("hidden", !state.isAdmin);
   elements.addGameButton.classList.toggle("hidden", !state.isAdmin);
   elements.exportCsvButton.classList.toggle("hidden", !state.isAdmin);
@@ -2357,6 +2380,7 @@ function openEditorModal(title) {
   elements.editorEdition.value = game.edition === "Unknown" ? "" : game.edition;
   elements.editorHolRarity.value = game.holRarity === "Unknown" ? "" : game.holRarity;
   elements.editorValue.value = game.value || "";
+  elements.editorNostalgiaValue.value = game.nostalgiaValue ? String(game.nostalgiaValue) : "";
   elements.editorTop50Rank.value = game.top50Rank || "";
   elements.editorSold.value = getSoldState(game.sold) ? "Yes" : "";
   elements.editorTop50Comment.value = game.top50Comment || "";
@@ -2386,6 +2410,7 @@ function openCreateGameModal() {
   elements.editorEdition.value = "";
   elements.editorHolRarity.value = "";
   elements.editorValue.value = "";
+  elements.editorNostalgiaValue.value = "";
   elements.editorTop50Rank.value = "";
   elements.editorSold.value = "";
   elements.editorTop50Comment.value = "";
@@ -2437,6 +2462,7 @@ function openDetailsModal(title) {
   elements.detailsTested.textContent = game.tested || "No data";
   elements.detailsPaid.textContent = formatPaidValue(game.paid);
   elements.detailsValue.textContent = game.value || "No data";
+  elements.detailsNostalgiaValue.textContent = game.nostalgiaValue ? String(game.nostalgiaValue) : "No data";
   elements.detailsSold.textContent = getSoldState(game.sold) ? "Yes" : "No";
   elements.detailsBoxartTitle.textContent = game.title;
   renderReviewPanel(game.title);
@@ -2654,6 +2680,7 @@ function handleEditorSubmit(event) {
     edition: cleanText(elements.editorEdition.value) || "Unknown",
     holRarity: cleanText(elements.editorHolRarity.value) || "Unknown",
     value: cleanText(elements.editorValue.value),
+    nostalgiaValue: cleanText(elements.editorNostalgiaValue.value),
     top50Rank: cleanText(elements.editorTop50Rank.value),
     sold: cleanText(elements.editorSold.value),
     top50Comment: cleanText(elements.editorTop50Comment.value),
@@ -2677,6 +2704,7 @@ function handleEditorSubmit(event) {
     copyProtection: currentGame?.copyProtection || "",
     paid: currentGame?.paid || "",
     value: override.value,
+    nostalgiaValue: Number.parseInt(override.nostalgiaValue, 10) || null,
     sold: override.sold,
     holRarity: override.holRarity,
     top50Rank: override.top50Rank,
@@ -2730,6 +2758,7 @@ function exportCollectionCsv() {
       "Copy Protection": game.copyProtection || "",
       Paid: formatPaidValueForExport(game.paid),
       Value: game.value || "",
+      "Nostalgia Value": game.nostalgiaValue || "",
       "Suggested Value": game.suggestedValue || "",
       "Value Samples": game.valueSamples || "",
       "Value Source": game.valueSource || "",
@@ -2839,6 +2868,7 @@ function buildCollectionRecord(game) {
     copyProtection: game.copyProtection,
     paid: game.paid,
     value: game.value,
+    nostalgiaValue: game.nostalgiaValue,
     suggestedValue: game.suggestedValue,
     valueSamples: game.valueSamples,
     valueSource: game.valueSource,

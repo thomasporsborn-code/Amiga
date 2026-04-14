@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>My Amiga Games</title>
-    <link rel="stylesheet" href="./styles.css?v=20260408k" />
+    <link rel="stylesheet" href="./styles.css?v=20260414a" />
   </head>
   <body>
     <div class="page-shell">
@@ -122,6 +122,18 @@
           <label class="field">
             <span>Release Year</span>
             <select id="year-filter"></select>
+          </label>
+
+          <label class="field admin-only hidden" id="nostalgia-filter-field">
+            <span>Nostalgia Value</span>
+            <select id="nostalgia-filter">
+              <option value="all">All nostalgia values</option>
+              <option value="5">5 - Most meaningful</option>
+              <option value="4">4</option>
+              <option value="3">3</option>
+              <option value="2">2</option>
+              <option value="1">1 - Least meaningful</option>
+            </select>
           </label>
 
           <div class="filter-block rating-filter">
@@ -539,6 +551,17 @@
               <input id="editor-value" type="text" />
             </label>
             <label class="field">
+              <span>Nostalgia Value</span>
+              <select id="editor-nostalgia-value">
+                <option value="">Not set</option>
+                <option value="5">5 - Most meaningful</option>
+                <option value="4">4</option>
+                <option value="3">3</option>
+                <option value="2">2</option>
+                <option value="1">1 - Least meaningful</option>
+              </select>
+            </label>
+            <label class="field">
               <span>Top 50 Rank</span>
               <input id="editor-top50-rank" type="number" min="1" max="50" />
             </label>
@@ -661,6 +684,10 @@
                     <div class="review-row__score" id="details-value"></div>
                   </div>
                   <div class="review-row">
+                    <div class="review-row__source">Nostalgia Value</div>
+                    <div class="review-row__score" id="details-nostalgia-value"></div>
+                  </div>
+                  <div class="review-row">
                     <div class="review-row__source">Sold</div>
                     <div class="review-row__score" id="details-sold"></div>
                   </div>
@@ -711,6 +738,6 @@
       </div>
     </div>
 
-    <script type="module" src="./app.js?v=20260408k"></script>
+    <script type="module" src="./app.js?v=20260414a"></script>
   </body>
 </html>

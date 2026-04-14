@@ -9,6 +9,7 @@ const DEFAULT_LIMIT = 8;
 const DEFAULT_MARKETPLACE = "EBAY-GB";
 
 async function main() {
+  loadDotEnv(path.join(__dirname, ".env"));
   const options = parseArgs(process.argv.slice(2));
   const appId = options.appId || process.env.EBAY_APP_ID;
 
@@ -135,6 +136,31 @@ function tokenize(value) {
 
 function cleanText(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function loadDotEnv(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return;
+  }
+
+  const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/);
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) {
+      continue;
+    }
+
+    const separatorIndex = trimmed.indexOf("=");
+    const key = trimmed.slice(0, separatorIndex).trim();
+    const rawValue = trimmed.slice(separatorIndex + 1).trim();
+    const value = rawValue.replace(/^['"]|['"]$/g, "");
+
+    if (key && !(key in process.env)) {
+      process.env[key] = value;
+    }
+  }
 }
 
 function delay(ms) {
