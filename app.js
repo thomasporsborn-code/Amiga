@@ -5,6 +5,7 @@ const APP_STORAGE_KEY = "amiga-data-store";
 const APP_STORAGE_BACKUP_KEY = "amiga-data-store-backup";
 const APP_STORAGE_VERSION = 1;
 const COLLECTION_DATA_URL = "./games.json";
+const MARKET_VALUES_DATA_URL = "./market-values.json";
 
 const persistedData = loadAppDataStore();
 
@@ -17,6 +18,8 @@ const state = {
   lemonRatingsMap: {},
   externalLinksMap: {},
   reviewsMap: {},
+  marketValuesPayload: null,
+  marketValuesMap: {},
   acceptedQualityFindings: persistedData.acceptedQualityFindings,
   wishlist: Array.isArray(persistedData.wishlist) ? persistedData.wishlist : [],
   isAdmin: window.localStorage.getItem("amiga-admin-session") === "true",
@@ -28,6 +31,7 @@ const state = {
   quickGenre: "",
   currentPage: "catalog",
   viewMode: "grid",
+  selectedTitles: new Set(),
   filters: {
     search: "",
     genre: "all",
@@ -45,6 +49,8 @@ const state = {
     testedOnly: false,
     untestedOnly: false,
     showSold: false,
+    hadOriginalPastOnly: false,
+    hadCopyPastOnly: false,
     sortOrder: "title-asc",
   },
 };
@@ -98,6 +104,8 @@ const elements = {
   editorHolRarity: document.querySelector("#editor-hol-rarity"),
   editorValue: document.querySelector("#editor-value"),
   editorNostalgiaValue: document.querySelector("#editor-nostalgia-value"),
+  editorHadOriginalPast: document.querySelector("#editor-had-original-past"),
+  editorHadCopyPast: document.querySelector("#editor-had-copy-past"),
   editorTop50Rank: document.querySelector("#editor-top50-rank"),
   editorSold: document.querySelector("#editor-sold"),
   editorTop50Comment: document.querySelector("#editor-top50-comment"),
@@ -129,6 +137,8 @@ const elements = {
   detailsValue: document.querySelector("#details-value"),
   detailsNostalgiaValue: document.querySelector("#details-nostalgia-value"),
   detailsSold: document.querySelector("#details-sold"),
+  detailsHadOriginalPast: document.querySelector("#details-had-original-past"),
+  detailsHadCopyPast: document.querySelector("#details-had-copy-past"),
   detailsReviewAverage: document.querySelector("#details-review-average"),
   detailsReviewList: document.querySelector("#details-review-list"),
   tradeModal: document.querySelector("#trade-modal"),
@@ -144,6 +154,18 @@ const elements = {
   heroLatest: document.querySelector("#hero-latest"),
   wishlistPanel: document.querySelector("#wishlist-panel"),
   collectionSummary: document.querySelector("#collection-summary"),
+  batchEditor: document.querySelector("#batch-editor"),
+  batchSelectionSummary: document.querySelector("#batch-selection-summary"),
+  batchSelectVisible: document.querySelector("#batch-select-visible"),
+  batchClearSelection: document.querySelector("#batch-clear-selection"),
+  batchField: document.querySelector("#batch-field"),
+  batchValueTextField: document.querySelector("#batch-value-text-field"),
+  batchValueText: document.querySelector("#batch-value-text"),
+  batchValueNumberField: document.querySelector("#batch-value-number-field"),
+  batchValueNumber: document.querySelector("#batch-value-number"),
+  batchValueSelectField: document.querySelector("#batch-value-select-field"),
+  batchValueSelect: document.querySelector("#batch-value-select"),
+  batchApply: document.querySelector("#batch-apply"),
   statsBoard: document.querySelector("#stats-board"),
   top50Summary: document.querySelector("#top50-summary"),
   top50List: document.querySelector("#top50-list"),
@@ -178,6 +200,8 @@ const elements = {
   testedOnly: document.querySelector("#tested-only"),
   untestedOnly: document.querySelector("#untested-only"),
   showSold: document.querySelector("#show-sold"),
+  hadOriginalPastOnly: document.querySelector("#had-original-past-only"),
+  hadCopyPastOnly: document.querySelector("#had-copy-past-only"),
   adminFilterGroup: document.querySelector("#admin-filter-group"),
   detailsAdminPanel: document.querySelector("#details-admin-panel"),
   sortOrder: document.querySelector("#sort-order"),
@@ -217,6 +241,7 @@ async function init() {
     loadLemonRatingsMap();
     loadExternalLinksMap();
     loadReviewsMap();
+    loadMarketValuesData();
     hydrateFilters();
     applyRouteFromLocation();
     render();
@@ -306,6 +331,24 @@ async function loadExternalLinksMap() {
   }
 }
 
+async function loadMarketValuesData() {
+  try {
+    const response = await fetchTextWithRetry(MARKET_VALUES_DATA_URL);
+    const payload = JSON.parse(response);
+
+    if (!isValidMarketValuesData(payload)) {
+      console.warn("market-values.json exists but does not match the expected schema.");
+      return;
+    }
+
+    state.marketValuesPayload = payload;
+    state.marketValuesMap = buildMarketValuesMap(payload);
+    render();
+  } catch (error) {
+    console.warn("market-values.json could not be loaded on startup.", error);
+  }
+}
+
 function bindEvents() {
   window.addEventListener("popstate", () => {
     applyRouteFromLocation();
@@ -382,6 +425,7 @@ function bindEvents() {
   elements.importBackupInput.addEventListener("change", handleImportBackupFile);
   elements.wishlistPanel.addEventListener("submit", handleWishlistSubmit);
   elements.wishlistPanel.addEventListener("click", handleWishlistClick);
+  elements.grid.addEventListener("change", handleGridSelectionChange);
   elements.editorBoxartPath.addEventListener("input", () => {
     updateEditorBoxartPreview(elements.editorTitleInput.value, elements.editorBoxartPath.value);
   });
@@ -529,10 +573,25 @@ function bindEvents() {
     render();
   });
 
+  elements.hadOriginalPastOnly.addEventListener("change", (event) => {
+    state.filters.hadOriginalPastOnly = event.target.checked;
+    render();
+  });
+
+  elements.hadCopyPastOnly.addEventListener("change", (event) => {
+    state.filters.hadCopyPastOnly = event.target.checked;
+    render();
+  });
+
   elements.sortOrder.addEventListener("change", (event) => {
     state.filters.sortOrder = event.target.value;
     render();
   });
+
+  elements.batchField.addEventListener("change", syncBatchEditorValueField);
+  elements.batchSelectVisible.addEventListener("click", selectVisibleGames);
+  elements.batchClearSelection.addEventListener("click", clearSelectedGames);
+  elements.batchApply.addEventListener("click", applyBatchEdit);
 
   elements.resetFilters.addEventListener("click", resetFilters);
 
@@ -652,6 +711,9 @@ function normalizeGame(entry) {
   const valueUpdated = cleanText(entry["Value Updated"]);
   const valueSamples = Number.parseInt(String(entry["Value Samples"] || ""), 10);
   const sold = cleanText(entry.Sold);
+  const hadOriginalPast = parseBooleanFlag(entry["Had Original in 80s-90s"]);
+  const hadCopyPast = parseBooleanFlag(entry["Had Copy in 80s-90s"]);
+  const valueComps = normalizeValueComps(entry["Value Comps"]);
   const holRarity = cleanText(entry["Hall of Light Rarity"]) || "Unknown";
   const top50Rank = Number.parseInt(entry["Top 50 Rank"], 10);
   const top50Comment = cleanText(entry["Top 50 Comment"]);
@@ -689,7 +751,10 @@ function normalizeGame(entry) {
     valueSource,
     valueUpdated,
     valueSamples: Number.isNaN(valueSamples) ? 0 : valueSamples,
+    valueComps,
     sold,
+    hadOriginalPast,
+    hadCopyPast,
     holRarity,
     top50Rank: Number.isNaN(top50Rank) ? null : top50Rank,
     top50Comment,
@@ -750,7 +815,10 @@ function normalizeStoredGame(entry) {
     valueSource: cleanText(entry.valueSource || entry["Value Source"]),
     valueUpdated: cleanText(entry.valueUpdated || entry["Value Updated"]),
     valueSamples: Number.parseInt(String(entry.valueSamples || entry["Value Samples"] || ""), 10) || 0,
+    valueComps: normalizeValueComps(entry.valueComps || entry["Value Comps"]),
     sold: cleanText(entry.sold || entry.Sold),
+    hadOriginalPast: parseBooleanFlag(entry.hadOriginalPast ?? entry["Had Original in 80s-90s"]),
+    hadCopyPast: parseBooleanFlag(entry.hadCopyPast ?? entry["Had Copy in 80s-90s"]),
     holRarity: cleanText(entry.holRarity || entry["Hall of Light Rarity"]) || "Unknown",
     top50Rank: Number.isNaN(top50Rank) ? null : top50Rank,
     top50Comment: cleanText(entry.top50Comment || entry["Top 50 Comment"]),
@@ -862,6 +930,8 @@ function resetFilters() {
     testedOnly: false,
     untestedOnly: false,
     showSold: false,
+    hadOriginalPastOnly: false,
+    hadCopyPastOnly: false,
     sortOrder: "title-asc",
   };
 
@@ -881,6 +951,8 @@ function resetFilters() {
   elements.testedOnly.checked = false;
   elements.untestedOnly.checked = false;
   elements.showSold.checked = false;
+  elements.hadOriginalPastOnly.checked = false;
+  elements.hadCopyPastOnly.checked = false;
   elements.sortOrder.value = "title-asc";
   updateRatingRangeValue();
   render();
@@ -899,6 +971,7 @@ function render() {
   renderHeroStats(state.games);
   renderWishlistPanel();
   renderCollectionSummary(filtered);
+  renderBatchEditor(filtered);
   renderStatsBoard(state.games);
   renderGrid(filtered);
   renderTop50(top50Games);
@@ -967,6 +1040,10 @@ function matchesFilters(game) {
     testedStates.size === 0 || testedStates.has(game.testedState);
   const isSold = getSoldState(game.sold);
   const soldMatches = state.isAdmin && state.filters.showSold ? true : !isSold;
+  const hadOriginalPastMatches =
+    !state.filters.hadOriginalPastOnly || game.hadOriginalPast === true;
+  const hadCopyPastMatches =
+    !state.filters.hadCopyPastOnly || game.hadCopyPast === true;
 
   return (
     searchMatches &&
@@ -982,7 +1059,9 @@ function matchesFilters(game) {
     extremelyRareMatches &&
     incompleteMatches &&
     testedMatches &&
-    soldMatches
+    soldMatches &&
+    hadOriginalPastMatches &&
+    hadCopyPastMatches
   );
 }
 
@@ -1186,6 +1265,139 @@ function renderCollectionSummary(filtered) {
     <div>Leading genres: ${genres.map(([value, count]) => `<strong>${escapeHtml(value)}</strong> (${count})`).join(", ")}.</div>
     <div>Top publishers: ${publishers.map(([value, count]) => `<strong>${escapeHtml(value)}</strong> (${count})`).join(", ")}.</div>
   `;
+}
+
+function renderBatchEditor(filtered) {
+  const validTitles = new Set(state.games.map((game) => game.title));
+  state.selectedTitles = new Set([...state.selectedTitles].filter((title) => validTitles.has(title)));
+
+  elements.batchEditor.classList.toggle("hidden", !state.isAdmin);
+
+  if (!state.isAdmin) {
+    return;
+  }
+
+  const selectedCount = state.selectedTitles.size;
+  const visibleSelectedCount = filtered.filter((game) => state.selectedTitles.has(game.title)).length;
+
+  elements.batchSelectionSummary.textContent =
+    selectedCount === 0
+      ? "No games selected."
+      : `${selectedCount} selected · ${visibleSelectedCount} visible with current filters.`;
+
+  syncBatchEditorValueField();
+}
+
+function getBatchFieldConfig(field) {
+  const configs = {
+    publisher: { type: "text" },
+    developer: { type: "text" },
+    genre: { type: "text" },
+    release: { type: "number", min: "1980", max: "2030", step: "1" },
+    boxSize: { type: "text" },
+    chipset: { type: "text" },
+    whdloadInstalled: {
+      type: "select",
+      options: [
+        ["", "Unknown"],
+        ["Yes", "Yes"],
+        ["No", "No"],
+      ],
+    },
+    complete: {
+      type: "select",
+      options: [
+        ["", "Unknown"],
+        ["Yes", "Yes"],
+        ["No", "No"],
+      ],
+    },
+    edition: {
+      type: "select",
+      options: [
+        ["", "Unknown"],
+        ["Original", "Original"],
+        ["Budget", "Budget"],
+        ["Re-release", "Re-release"],
+      ],
+    },
+    tested: {
+      type: "select",
+      options: [
+        ["", "Unknown"],
+        ["Yes, Working", "Working"],
+        ["Yes, Not working", "Not working"],
+        ["No", "No"],
+      ],
+    },
+    copyProtection: { type: "text" },
+    holRarity: {
+      type: "select",
+      options: [
+        ["", "Unknown"],
+        ["Extremely Rare", "Extremely Rare"],
+        ["Very Rare", "Very Rare"],
+        ["Rare", "Rare"],
+        ["Uncommon", "Uncommon"],
+        ["Common", "Common"],
+      ],
+    },
+    sold: {
+      type: "select",
+      options: [
+        ["", "No"],
+        ["Yes", "Yes"],
+      ],
+    },
+    hadOriginalPast: {
+      type: "select",
+      options: [
+        ["", "No"],
+        ["Yes", "Yes"],
+      ],
+    },
+    hadCopyPast: {
+      type: "select",
+      options: [
+        ["", "No"],
+        ["Yes", "Yes"],
+      ],
+    },
+    value: { type: "text" },
+    nostalgiaValue: {
+      type: "select",
+      options: [
+        ["", "Not set"],
+        ["5", "5 - Most meaningful"],
+        ["4", "4"],
+        ["3", "3"],
+        ["2", "2"],
+        ["1", "1 - Least meaningful"],
+      ],
+    },
+  };
+
+  return configs[field] || { type: "text" };
+}
+
+function syncBatchEditorValueField() {
+  const config = getBatchFieldConfig(elements.batchField.value);
+
+  elements.batchValueTextField.classList.toggle("hidden", config.type !== "text");
+  elements.batchValueNumberField.classList.toggle("hidden", config.type !== "number");
+  elements.batchValueSelectField.classList.toggle("hidden", config.type !== "select");
+
+  if (config.type === "number") {
+    elements.batchValueNumber.min = config.min || "";
+    elements.batchValueNumber.max = config.max || "";
+    elements.batchValueNumber.step = config.step || "1";
+  }
+
+  if (config.type === "select") {
+    elements.batchValueSelect.innerHTML = config.options
+      .map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`)
+      .join("");
+  }
 }
 
 function renderStatsBoard(filtered) {
@@ -1710,6 +1922,14 @@ function renderGamePage(title) {
                       <div class="review-row__source">Sold</div>
                       <div class="review-row__score">${escapeHtml(getSoldState(game.sold) ? "Yes" : "No")}</div>
                     </div>
+                    <div class="review-row">
+                      <div class="review-row__source">Had Original in 80s-90s</div>
+                      <div class="review-row__score">${escapeHtml(game.hadOriginalPast ? "Yes" : "No")}</div>
+                    </div>
+                    <div class="review-row">
+                      <div class="review-row__source">Had Copy in 80s-90s</div>
+                      <div class="review-row__score">${escapeHtml(game.hadCopyPast ? "Yes" : "No")}</div>
+                    </div>
                   </div>
                 </section>
               `
@@ -1817,63 +2037,346 @@ function renderQualityTools(report) {
 
 function renderValueReview(filteredGames) {
   const candidates = filteredGames
-    .filter((game) => cleanText(game.suggestedValue))
+    .map((game) => buildValueReviewEntry(game))
+    .filter((entry) => entry.hasResearch)
     .sort((left, right) => {
-      const leftMissing = cleanText(left.value) ? 1 : 0;
-      const rightMissing = cleanText(right.value) ? 1 : 0;
-      return leftMissing - rightMissing || left.title.localeCompare(right.title, "sv");
+      const leftMissing = cleanText(left.game.value) ? 1 : 0;
+      const rightMissing = cleanText(right.game.value) ? 1 : 0;
+      return leftMissing - rightMissing || left.game.title.localeCompare(right.game.title, "sv");
     });
 
   const missingValueCount = filteredGames.filter((game) => !cleanText(game.value)).length;
+  const externalResearchCount = candidates.filter((entry) => entry.externalResearch).length;
 
   elements.valueSummary.innerHTML = `
-    <div><strong>${candidates.length}</strong> games have a suggested value in the current selection.</div>
+    <div><strong>${candidates.length}</strong> games have value research in the current selection.</div>
     <div><strong>${missingValueCount}</strong> games in the current selection still have no confirmed value.</div>
+    <div><strong>${externalResearchCount}</strong> games are currently backed by external agent research.</div>
+    <div class="value-review__note">Suggested values are only draft estimates from eBay UK sold listings. Review the sold samples before confirming a verified value.</div>
   `;
 
   if (!candidates.length) {
     elements.valueGrid.innerHTML = `
       <article class="quality-panel">
-        <h3>No value suggestions available</h3>
-        <p class="chart-panel__empty">Run the value import script or broaden the filters to show more suggested values.</p>
+        <h3>No value research available</h3>
+        <p class="chart-panel__empty">Run the value import script or broaden the filters to show more valuation candidates.</p>
       </article>
     `;
     return;
   }
 
   elements.valueGrid.innerHTML = candidates
-    .map((game) => `
+    .map((entry) => `
       <article class="quality-panel value-panel">
-        <h3>${escapeHtml(game.title)}</h3>
+        <h3>${escapeHtml(entry.game.title)}</h3>
         <div class="value-panel__meta">
-          <span>${escapeHtml(game.publisher)}</span>
-          <span>${escapeHtml(String(game.release || "Unknown"))}</span>
+          <span>${escapeHtml(entry.game.publisher)}</span>
+          <span>${escapeHtml(String(entry.game.release || "Unknown"))}</span>
+          ${entry.status ? `<span>${escapeHtml(entry.status)}</span>` : ""}
+          ${entry.confidence ? `<span>${escapeHtml(`Confidence: ${entry.confidence}`)}</span>` : ""}
         </div>
         <div class="value-panel__grid">
           <div>
-            <div class="value-panel__label">Current Value</div>
-            <div class="value-panel__value">${escapeHtml(game.value || "No data")}</div>
+            <div class="value-panel__label">Verified Value</div>
+            <div class="value-panel__value">${escapeHtml(entry.game.value || "No data")}</div>
           </div>
           <div>
             <div class="value-panel__label">Suggested Value</div>
-            <div class="value-panel__value">${escapeHtml(game.suggestedValue || "No suggestion")}</div>
+            <div class="value-panel__value">${escapeHtml(entry.suggestedValue || "No suggestion")}</div>
           </div>
           <div>
             <div class="value-panel__label">Samples</div>
-            <div class="value-panel__value">${escapeHtml(String(game.valueSamples || 0))}</div>
+            <div class="value-panel__value">${escapeHtml(String(entry.valueSamples || 0))}</div>
           </div>
           <div>
             <div class="value-panel__label">Source</div>
-            <div class="value-panel__value">${escapeHtml(game.valueSource || "Unknown")}</div>
+            <div class="value-panel__value">${escapeHtml(entry.valueSource || "Unknown")}</div>
           </div>
         </div>
+        ${
+          entry.suggestedRange || entry.pricingMethod || entry.searchQueries.length || entry.signalSummary.length
+            ? `
+              <div class="value-panel__grid value-panel__grid--secondary">
+                ${
+                  entry.suggestedRange
+                    ? `<div><div class="value-panel__label">Suggested Range</div><div class="value-panel__value">${escapeHtml(entry.suggestedRange)}</div></div>`
+                    : ""
+                }
+                ${
+                  entry.pricingMethod
+                    ? `<div><div class="value-panel__label">Method</div><div class="value-panel__value">${escapeHtml(entry.pricingMethod)}</div></div>`
+                    : ""
+                }
+                ${
+                  entry.searchQueries.length
+                    ? `<div><div class="value-panel__label">Searches</div><div class="value-panel__value">${escapeHtml(entry.searchQueries.join(" | "))}</div></div>`
+                    : ""
+                }
+                ${
+                  entry.signalSummary.length
+                    ? `<div><div class="value-panel__label">Signals</div><div class="value-panel__value">${escapeHtml(entry.signalSummary.join(" | "))}</div></div>`
+                    : ""
+                }
+              </div>
+            `
+            : ""
+        }
+        <div class="value-panel__editor">
+          <label class="field field--compact">
+            <span>Suggested Value</span>
+            <input class="value-panel__input" type="text" value="${escapeHtml(entry.suggestedValue || "")}" data-suggested-value-input="${escapeHtml(entry.game.title)}" />
+          </label>
+          <label class="field field--compact">
+            <span>Verified Value</span>
+            <input class="value-panel__input" type="text" value="${escapeHtml(entry.game.value || "")}" data-verified-value-input="${escapeHtml(entry.game.title)}" />
+          </label>
+        </div>
+        <div class="value-panel__comps">
+          <div class="value-panel__label">Sold Listings Used</div>
+          ${
+            Array.isArray(entry.valueComps) && entry.valueComps.length
+              ? `<div class="value-comps">${entry.valueComps
+                  .slice(0, 5)
+                  .map(
+                    (comp) => `
+                      <div class="value-comp">
+                        <div class="value-comp__price">${escapeHtml(formatCompPrice(comp))}</div>
+                        <div class="value-comp__meta">${escapeHtml(comp.endTime || "Unknown date")}</div>
+                        <div class="value-comp__title">${escapeHtml(comp.title)}</div>
+                        ${
+                          comp.agentDecision || (Array.isArray(comp.riskFlags) && comp.riskFlags.length)
+                            ? `<div class="value-comp__tags">
+                                ${comp.agentDecision ? `<span class="value-comp__tag">${escapeHtml(comp.agentDecision)}</span>` : ""}
+                                ${(Array.isArray(comp.riskFlags) ? comp.riskFlags : [])
+                                  .slice(0, 3)
+                                  .map((flag) => `<span class="value-comp__tag value-comp__tag--warn">${escapeHtml(flag)}</span>`)
+                                  .join("")}
+                              </div>`
+                            : ""
+                        }
+                        ${
+                          comp.itemUrl
+                            ? `<a class="quality-link" href="${escapeHtml(comp.itemUrl)}" target="_blank" rel="noreferrer noopener">Open listing</a>`
+                            : ""
+                        }
+                      </div>
+                    `,
+                  )
+                  .join("")}</div>`
+              : `<p class="chart-panel__empty">No sold listings imported yet.</p>`
+          }
+        </div>
         <div class="quality-list__actions">
-          <button class="quality-link" type="button" data-edit-title="${escapeHtml(game.title)}">Edit</button>
-          <button class="quality-link quality-link--accept" type="button" data-apply-suggested-value="${escapeHtml(game.title)}">Apply Suggested</button>
+          <button class="quality-link" type="button" data-edit-title="${escapeHtml(entry.game.title)}">Edit</button>
+          <button class="quality-link" type="button" data-save-suggested-value="${escapeHtml(entry.game.title)}">Save Suggested</button>
+          <button class="quality-link quality-link--accept" type="button" data-apply-suggested-value="${escapeHtml(entry.game.title)}">Accept Suggested</button>
+          <button class="quality-link quality-link--accept" type="button" data-save-verified-value="${escapeHtml(entry.game.title)}">Save Verified</button>
         </div>
       </article>
     `)
     .join("");
+}
+
+function buildValueReviewEntry(game) {
+  const externalResearch = getMarketValueResearch(game);
+  const externalComps = normalizeMarketValueComps(externalResearch?.comps);
+  const internalComps = normalizeValueComps(game.valueComps);
+  const valueComps = internalComps.length ? internalComps : externalComps;
+  const suggestedValue = cleanText(game.suggestedValue) || cleanText(externalResearch?.summary?.suggestedValue);
+  const valueSamples =
+    Number.parseInt(String(game.valueSamples || ""), 10)
+    || Number.parseInt(String(externalResearch?.summary?.acceptedCompCount || externalResearch?.summary?.compCount || valueComps.length), 10)
+    || 0;
+  const valueSource = cleanText(game.valueSource) || buildMarketResearchSource(externalResearch);
+  const suggestedMin = cleanText(externalResearch?.summary?.suggestedValueMin);
+  const suggestedMax = cleanText(externalResearch?.summary?.suggestedValueMax);
+  const searchQueries = Array.isArray(externalResearch?.searches)
+    ? externalResearch.searches.map((search) => cleanText(search.query)).filter(Boolean)
+    : [];
+  const signalSummary = externalResearch?.signals
+    ? Object.entries(externalResearch.signals)
+        .filter(([, enabled]) => enabled === true)
+        .map(([key]) => humanizeSignalKey(key))
+    : [];
+
+  return {
+    game,
+    hasResearch: Boolean(suggestedValue || valueComps.length || externalResearch),
+    externalResearch,
+    suggestedValue,
+    valueSamples,
+    valueSource,
+    valueComps,
+    status: cleanText(externalResearch?.status),
+    confidence: cleanText(externalResearch?.summary?.confidence),
+    pricingMethod: cleanText(externalResearch?.summary?.pricingMethod),
+    suggestedRange: suggestedMin || suggestedMax ? `${suggestedMin || "?"} - ${suggestedMax || "?"}` : "",
+    searchQueries,
+    signalSummary,
+  };
+}
+
+function getMarketValueResearch(game) {
+  const directMatch = state.marketValuesMap[normalizeMarketValueKey(game.title)];
+  if (directMatch) {
+    return directMatch;
+  }
+
+  const fallbackKey = normalizeMarketValueKey(slugify(game.title));
+  return state.marketValuesMap[fallbackKey] || null;
+}
+
+function buildMarketValuesMap(payload) {
+  const map = {};
+
+  for (const entry of payload.games) {
+    const record = normalizeMarketValueRecord(entry);
+
+    if (!record) {
+      continue;
+    }
+
+    const titleKey = normalizeMarketValueKey(entry.title);
+    const matchKey = normalizeMarketValueKey(entry.matchKey);
+
+    if (titleKey) {
+      map[titleKey] = record;
+    }
+
+    if (matchKey) {
+      map[matchKey] = record;
+    }
+  }
+
+  return map;
+}
+
+function normalizeMarketValueRecord(entry) {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+
+  const title = cleanText(entry.title);
+  const matchKey = cleanText(entry.matchKey);
+
+  if (!title && !matchKey) {
+    return null;
+  }
+
+  const searches = Array.isArray(entry.searches)
+    ? entry.searches
+        .map((search) => ({
+          source: cleanText(search?.source),
+          query: cleanText(search?.query),
+          searchedAt: cleanText(search?.searchedAt),
+          resultQuality: cleanText(search?.resultQuality),
+          notes: cleanText(search?.notes),
+        }))
+        .filter((search) => search.query || search.source)
+    : [];
+
+  const summary = entry.summary && typeof entry.summary === "object"
+    ? {
+        currency: cleanText(entry.summary.currency),
+        compCount: Number.parseInt(String(entry.summary.compCount || ""), 10) || 0,
+        acceptedCompCount: Number.parseInt(String(entry.summary.acceptedCompCount || ""), 10) || 0,
+        rejectedCompCount: Number.parseInt(String(entry.summary.rejectedCompCount || ""), 10) || 0,
+        suggestedValue: cleanText(entry.summary.suggestedValue),
+        suggestedValueMin: cleanText(entry.summary.suggestedValueMin),
+        suggestedValueMax: cleanText(entry.summary.suggestedValueMax),
+        confidence: cleanText(entry.summary.confidence),
+        pricingMethod: cleanText(entry.summary.pricingMethod),
+      }
+    : {};
+
+  const signals = entry.signals && typeof entry.signals === "object" ? entry.signals : {};
+
+  return {
+    title,
+    matchKey,
+    status: cleanText(entry.status),
+    searches,
+    summary,
+    signals,
+    comps: normalizeMarketValueComps(entry.comps),
+  };
+}
+
+function normalizeMarketValueComps(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((comp) => normalizeMarketValueComp(comp))
+    .filter(Boolean);
+}
+
+function normalizeMarketValueComp(comp) {
+  if (!comp || typeof comp !== "object") {
+    return null;
+  }
+
+  const title = cleanText(comp.title);
+  const price = cleanText(comp.price);
+  const itemUrl = cleanText(comp.url || comp.itemUrl);
+
+  if (!title || !price) {
+    return null;
+  }
+
+  return {
+    title,
+    price,
+    currency: cleanText(comp.currency),
+    endTime: cleanText(comp.soldAt || comp.endTime),
+    itemUrl,
+    marketplace: cleanText(comp.source || comp.marketplace),
+    agentDecision: cleanText(comp.agentDecision),
+    agentConfidence: cleanText(comp.agentConfidence),
+    riskFlags: Array.isArray(comp.riskFlags) ? comp.riskFlags.map((flag) => cleanText(flag)).filter(Boolean) : [],
+    notes: cleanText(comp.notes),
+  };
+}
+
+function buildMarketResearchSource(research) {
+  if (!research) {
+    return "";
+  }
+
+  const sources = new Set();
+
+  if (Array.isArray(research.searches)) {
+    for (const search of research.searches) {
+      const source = cleanText(search.source);
+      if (source) {
+        sources.add(source);
+      }
+    }
+  }
+
+  if (!sources.size) {
+    return "External market agent";
+  }
+
+  return [...sources].join(", ");
+}
+
+function normalizeMarketValueKey(value) {
+  return cleanText(value)
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function humanizeSignalKey(key) {
+  return cleanText(key)
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replaceAll(/[_-]+/g, " ")
+    .toLowerCase();
 }
 
 function findDuplicateEntries(games) {
@@ -2023,10 +2526,24 @@ function handleValueGridClick(event) {
     return;
   }
 
+  const saveSuggestedButton = event.target.closest("[data-save-suggested-value]");
+
+  if (saveSuggestedButton) {
+    saveSuggestedValue(saveSuggestedButton.dataset.saveSuggestedValue);
+    return;
+  }
+
   const applyButton = event.target.closest("[data-apply-suggested-value]");
 
   if (applyButton) {
     applySuggestedValue(applyButton.dataset.applySuggestedValue);
+    return;
+  }
+
+  const saveVerifiedButton = event.target.closest("[data-save-verified-value]");
+
+  if (saveVerifiedButton) {
+    saveVerifiedValue(saveVerifiedButton.dataset.saveVerifiedValue);
     return;
   }
 
@@ -2037,6 +2554,19 @@ function handleValueGridClick(event) {
   }
 }
 
+function saveSuggestedValue(title) {
+  const game = state.rawGames.find((entry) => entry.title === title);
+  const input = elements.valueGrid.querySelector(`[data-suggested-value-input="${escapeAttributeSelector(title)}"]`);
+
+  if (!game || !input) {
+    return;
+  }
+
+  game.suggestedValue = cleanText(input.value);
+  persistAppData();
+  reapplyGames();
+}
+
 function applySuggestedValue(title) {
   const game = state.rawGames.find((entry) => entry.title === title);
 
@@ -2045,6 +2575,20 @@ function applySuggestedValue(title) {
   }
 
   game.value = cleanText(game.suggestedValue);
+  game.valueUpdated = new Date().toISOString().slice(0, 10);
+  persistAppData();
+  reapplyGames();
+}
+
+function saveVerifiedValue(title) {
+  const game = state.rawGames.find((entry) => entry.title === title);
+  const input = elements.valueGrid.querySelector(`[data-verified-value-input="${escapeAttributeSelector(title)}"]`);
+
+  if (!game || !input) {
+    return;
+  }
+
+  game.value = cleanText(input.value);
   game.valueUpdated = new Date().toISOString().slice(0, 10);
   persistAppData();
   reapplyGames();
@@ -2111,6 +2655,8 @@ function renderGrid(filtered) {
     const placeholder = node.querySelector(".boxart-placeholder");
     const editButton = node.querySelector(".card-edit-button");
     const mediaFrame = node.querySelector(".boxart-frame");
+    const selectLabel = node.querySelector(".game-card__select");
+    const selectInput = node.querySelector(".game-card__select-input");
 
     node.querySelector(".game-card__title").textContent = game.title;
     node.querySelector(".game-card__genre").textContent = `Genre: ${game.primaryGenre}`;
@@ -2129,6 +2675,13 @@ function renderGrid(filtered) {
     node.querySelector(".meta-complete").textContent = game.complete || "No data";
     node.querySelector(".meta-original").textContent =
       game.edition.toLowerCase() === "original" ? "Yes" : "No";
+
+    if (state.isAdmin) {
+      selectLabel.classList.remove("hidden");
+      selectInput.checked = state.selectedTitles.has(game.title);
+      selectInput.dataset.selectTitle = game.title;
+      node.classList.toggle("game-card--selected", selectInput.checked);
+    }
 
     mediaFrame.addEventListener("click", () => {
       openDetailsModal(game.title);
@@ -2169,6 +2722,174 @@ function renderGrid(filtered) {
   });
 
   elements.grid.append(fragment);
+}
+
+function handleGridSelectionChange(event) {
+  if (!state.isAdmin) {
+    return;
+  }
+
+  const input = event.target.closest("[data-select-title]");
+
+  if (!input) {
+    return;
+  }
+
+  const title = cleanText(input.dataset.selectTitle);
+
+  if (!title) {
+    return;
+  }
+
+  if (input.checked) {
+    state.selectedTitles.add(title);
+  } else {
+    state.selectedTitles.delete(title);
+  }
+
+  renderBatchEditor(state.filteredGames);
+  input.closest(".game-card")?.classList.toggle("game-card--selected", input.checked);
+}
+
+function selectVisibleGames() {
+  if (!state.isAdmin) {
+    return;
+  }
+
+  state.filteredGames.forEach((game) => {
+    state.selectedTitles.add(game.title);
+  });
+  render();
+}
+
+function clearSelectedGames() {
+  state.selectedTitles.clear();
+  render();
+}
+
+function getBatchFieldValue() {
+  const config = getBatchFieldConfig(elements.batchField.value);
+
+  if (config.type === "number") {
+    return cleanText(elements.batchValueNumber.value);
+  }
+
+  if (config.type === "select") {
+    return cleanText(elements.batchValueSelect.value);
+  }
+
+  return cleanText(elements.batchValueText.value);
+}
+
+function applyBatchEdit() {
+  if (!state.isAdmin) {
+    return;
+  }
+
+  const titles = [...state.selectedTitles];
+
+  if (!titles.length) {
+    window.alert("Select at least one game before applying a batch update.");
+    return;
+  }
+
+  const field = elements.batchField.value;
+  const nextValue = getBatchFieldValue();
+  const updatesApplied = [];
+
+  for (const title of titles) {
+    const game = state.rawGames.find((entry) => entry.title === title);
+
+    if (!game) {
+      continue;
+    }
+
+    applyBatchValueToGame(game, field, nextValue);
+    updatesApplied.push(title);
+  }
+
+  if (!updatesApplied.length) {
+    return;
+  }
+
+  persistAppData();
+  reapplyGames();
+}
+
+function applyBatchValueToGame(game, field, value) {
+  switch (field) {
+    case "publisher":
+      game.publisher = value || "Unknown publisher";
+      if (!cleanText(game.developer) || game.developer === "Unknown publisher") {
+        game.developer = game.publisher;
+      }
+      break;
+    case "developer":
+      game.developer = value || game.publisher || "Unknown publisher";
+      break;
+    case "genre": {
+      const genres = value ? splitMultiValue(value) : ["Other"];
+      game.genres = genres.length ? genres : ["Other"];
+      game.primaryGenre = game.genres[0] || "Other";
+      break;
+    }
+    case "release": {
+      const releaseYear = Number.parseInt(value, 10);
+      game.release = Number.isNaN(releaseYear) ? null : releaseYear;
+      break;
+    }
+    case "boxSize":
+      game.boxSize = normalizeBoxSize(value) || "Unknown";
+      break;
+    case "chipset":
+      game.chipset = value || "Unknown";
+      break;
+    case "whdloadInstalled":
+      game.whdloadInstalled = value;
+      break;
+    case "complete":
+      game.complete = normalizeCompleteValue(value);
+      game.completeState = getCompleteState(game.complete);
+      game.completeStateLabel =
+        game.completeState === "complete"
+          ? "Complete"
+          : game.completeState === "incomplete"
+            ? "Incomplete"
+            : "Unknown status";
+      break;
+    case "edition":
+      game.edition = value || "Unknown";
+      break;
+    case "tested":
+      game.tested = value;
+      game.testedState = getTestedState(game.tested);
+      break;
+    case "copyProtection":
+      game.copyProtection = value || "Unknown";
+      break;
+    case "holRarity":
+      game.holRarity = value || "Unknown";
+      break;
+    case "sold":
+      game.sold = value;
+      break;
+    case "hadOriginalPast":
+      game.hadOriginalPast = parseBooleanFlag(value);
+      break;
+    case "hadCopyPast":
+      game.hadCopyPast = parseBooleanFlag(value);
+      break;
+    case "value":
+      game.value = value;
+      break;
+    case "nostalgiaValue": {
+      const nostalgiaValue = Number.parseInt(value, 10);
+      game.nostalgiaValue = Number.isNaN(nostalgiaValue) ? null : nostalgiaValue;
+      break;
+    }
+    default:
+      break;
+  }
 }
 function getCompleteState(value) {
   const normalized = cleanText(value).toLowerCase();
@@ -2237,6 +2958,57 @@ function getSoldState(value) {
   const normalized = cleanText(value).toLowerCase();
 
   return normalized === "yes" || normalized === "sold" || normalized.startsWith("yes,") || normalized.startsWith("sold");
+}
+
+function parseBooleanFlag(value) {
+  const normalized = cleanText(value).toLowerCase();
+  return normalized === "yes" || normalized === "true" || normalized === "1" || normalized === "x";
+}
+
+function normalizeValueComps(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => normalizeValueComp(item))
+      .filter(Boolean);
+  }
+
+  if (!cleanText(value)) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(String(value));
+    return Array.isArray(parsed)
+      ? parsed.map((item) => normalizeValueComp(item)).filter(Boolean)
+      : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function normalizeValueComp(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const title = cleanText(value.title);
+  const price = cleanText(value.price);
+  const currency = cleanText(value.currency);
+  const endTime = cleanText(value.endTime);
+  const itemUrl = cleanText(value.itemUrl);
+
+  if (!title || !price) {
+    return null;
+  }
+
+  return {
+    title,
+    price,
+    currency,
+    endTime,
+    itemUrl,
+    marketplace: cleanText(value.marketplace),
+  };
 }
 
 function isUnknownLabel(value) {
@@ -2330,6 +3102,7 @@ function handleLoginSubmit(event) {
 
 function logoutAdmin() {
   state.isAdmin = false;
+  state.selectedTitles.clear();
   window.localStorage.removeItem("amiga-admin-session");
   syncAdminUi();
   closeEditorModal();
@@ -2345,6 +3118,7 @@ function syncAdminUi() {
   elements.exportCsvButton.classList.toggle("hidden", !state.isAdmin);
   elements.exportBackupButton.classList.toggle("hidden", !state.isAdmin);
   elements.importBackupButton.classList.toggle("hidden", !state.isAdmin);
+  elements.batchEditor.classList.toggle("hidden", !state.isAdmin);
   elements.qualityNav.classList.toggle("hidden", !state.isAdmin);
   elements.valueNav.classList.toggle("hidden", !state.isAdmin);
 
@@ -2381,6 +3155,8 @@ function openEditorModal(title) {
   elements.editorHolRarity.value = game.holRarity === "Unknown" ? "" : game.holRarity;
   elements.editorValue.value = game.value || "";
   elements.editorNostalgiaValue.value = game.nostalgiaValue ? String(game.nostalgiaValue) : "";
+  elements.editorHadOriginalPast.checked = game.hadOriginalPast === true;
+  elements.editorHadCopyPast.checked = game.hadCopyPast === true;
   elements.editorTop50Rank.value = game.top50Rank || "";
   elements.editorSold.value = getSoldState(game.sold) ? "Yes" : "";
   elements.editorTop50Comment.value = game.top50Comment || "";
@@ -2411,6 +3187,8 @@ function openCreateGameModal() {
   elements.editorHolRarity.value = "";
   elements.editorValue.value = "";
   elements.editorNostalgiaValue.value = "";
+  elements.editorHadOriginalPast.checked = false;
+  elements.editorHadCopyPast.checked = false;
   elements.editorTop50Rank.value = "";
   elements.editorSold.value = "";
   elements.editorTop50Comment.value = "";
@@ -2464,6 +3242,8 @@ function openDetailsModal(title) {
   elements.detailsValue.textContent = game.value || "No data";
   elements.detailsNostalgiaValue.textContent = game.nostalgiaValue ? String(game.nostalgiaValue) : "No data";
   elements.detailsSold.textContent = getSoldState(game.sold) ? "Yes" : "No";
+  elements.detailsHadOriginalPast.textContent = game.hadOriginalPast ? "Yes" : "No";
+  elements.detailsHadCopyPast.textContent = game.hadCopyPast ? "Yes" : "No";
   elements.detailsBoxartTitle.textContent = game.title;
   renderReviewPanel(game.title);
 
@@ -2681,6 +3461,8 @@ function handleEditorSubmit(event) {
     holRarity: cleanText(elements.editorHolRarity.value) || "Unknown",
     value: cleanText(elements.editorValue.value),
     nostalgiaValue: cleanText(elements.editorNostalgiaValue.value),
+    hadOriginalPast: elements.editorHadOriginalPast.checked,
+    hadCopyPast: elements.editorHadCopyPast.checked,
     top50Rank: cleanText(elements.editorTop50Rank.value),
     sold: cleanText(elements.editorSold.value),
     top50Comment: cleanText(elements.editorTop50Comment.value),
@@ -2705,6 +3487,8 @@ function handleEditorSubmit(event) {
     paid: currentGame?.paid || "",
     value: override.value,
     nostalgiaValue: Number.parseInt(override.nostalgiaValue, 10) || null,
+    hadOriginalPast: override.hadOriginalPast === true,
+    hadCopyPast: override.hadCopyPast === true,
     sold: override.sold,
     holRarity: override.holRarity,
     top50Rank: override.top50Rank,
@@ -2763,7 +3547,10 @@ function exportCollectionCsv() {
       "Value Samples": game.valueSamples || "",
       "Value Source": game.valueSource || "",
       "Value Updated": game.valueUpdated || "",
+      "Value Comps": JSON.stringify(game.valueComps || []),
       Sold: game.sold || "",
+      "Had Original in 80s-90s": game.hadOriginalPast ? "Yes" : "",
+      "Had Copy in 80s-90s": game.hadCopyPast ? "Yes" : "",
       "Hall of Light Rarity": game.holRarity || "",
       "Top 50 Rank": game.top50Rank || "",
       "Top 50 Comment": game.top50Comment || "",
@@ -2873,7 +3660,10 @@ function buildCollectionRecord(game) {
     valueSamples: game.valueSamples,
     valueSource: game.valueSource,
     valueUpdated: game.valueUpdated,
+    valueComps: game.valueComps || [],
     sold: game.sold,
+    hadOriginalPast: game.hadOriginalPast === true,
+    hadCopyPast: game.hadCopyPast === true,
     holRarity: game.holRarity,
     top50Rank: game.top50Rank,
     top50Comment: game.top50Comment,
@@ -2982,6 +3772,16 @@ function isValidCollectionData(value) {
       Array.isArray(value.collection) &&
       (!("wishlist" in value) || Array.isArray(value.wishlist)) &&
       value.collection.every((entry) => entry && typeof entry === "object" && typeof cleanText(entry.title || entry.Title) === "string"),
+  );
+}
+
+function isValidMarketValuesData(value) {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      Number.isInteger(value.schemaVersion) &&
+      Array.isArray(value.games) &&
+      value.games.every((entry) => entry && typeof entry === "object" && (cleanText(entry.title) || cleanText(entry.matchKey))),
   );
 }
 
@@ -3130,6 +3930,10 @@ function escapeCsvValue(value) {
   return `"${stringValue.replaceAll('"', '""')}"`;
 }
 
+function escapeAttributeSelector(value) {
+  return String(value || "").replace(/["\\]/g, "\\$&");
+}
+
 function downloadFile(filename, content, mimeType) {
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
@@ -3155,6 +3959,25 @@ function formatPaidValueForExport(value) {
 
   const match = cleaned.match(/[0-9]+(?:[.,][0-9]+)?/);
   return match ? `${match[0].replace(",", ".")} SEK` : "";
+}
+
+function formatCompPrice(comp) {
+  const price = cleanText(comp?.price);
+  const currency = cleanText(comp?.currency);
+
+  if (!price) {
+    return "No price";
+  }
+
+  if (currency === "GBP") {
+    return `GBP ${price}`;
+  }
+
+  if (currency) {
+    return `${currency} ${price}`;
+  }
+
+  return price;
 }
 
 function updateEditorBoxartPreview(title, path) {

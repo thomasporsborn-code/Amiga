@@ -35,14 +35,21 @@ function main() {
       return game;
     }
 
-    const analysis = analyzeComps(research.comps);
+    const importedComps = Array.isArray(research.comps) ? research.comps.slice(0, 10) : [];
+
+    if (!importedComps.length) {
+      return game;
+    }
+
+    const analysis = analyzeComps(importedComps);
     const nextGame = { ...game };
+    nextGame.valueComps = importedComps;
+    nextGame.valueSamples = analysis.keptCount;
+    nextGame.valueSource = String(research.valueSource || "eBay sold listings").trim();
+    nextGame.valueUpdated = String(research.valueUpdated || new Date().toISOString().slice(0, 10)).trim();
 
     if (analysis.suggestedValue) {
       nextGame.suggestedValue = analysis.suggestedValue;
-      nextGame.valueSamples = analysis.keptCount;
-      nextGame.valueSource = String(research.valueSource || "eBay sold listings").trim();
-      nextGame.valueUpdated = String(research.valueUpdated || new Date().toISOString().slice(0, 10)).trim();
       updated += 1;
     }
 

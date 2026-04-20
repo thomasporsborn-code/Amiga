@@ -37,9 +37,25 @@ function main() {
 
 function buildSearchTitle(game) {
   const title = String(game.title || "").trim();
-  const publisher = String(game.publisher || "").trim();
-  const release = game.release ? String(game.release) : "";
-  return [title, publisher, release].filter(Boolean).join(" ");
+  const simplifiedTitle = simplifySearchTitle(title);
+  return [simplifiedTitle || title, "Amiga"].filter(Boolean).join(" ");
+}
+
+function simplifySearchTitle(title) {
+  const cleaned = String(title || "").trim();
+
+  if (!cleaned) {
+    return "";
+  }
+
+  const withoutLeadingArticle = cleaned.replace(/^The\s+/i, "");
+  const beforeColon = withoutLeadingArticle.split(":")[0].trim();
+
+  if (beforeColon && beforeColon.length >= 4) {
+    return beforeColon;
+  }
+
+  return withoutLeadingArticle;
 }
 
 main();

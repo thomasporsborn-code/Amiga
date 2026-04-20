@@ -167,6 +167,8 @@
             <label><input id="tested-only" type="checkbox" /> Tested only</label>
             <label><input id="untested-only" type="checkbox" /> Untested only</label>
             <label><input id="show-sold" type="checkbox" /> Show sold</label>
+            <label><input id="had-original-past-only" type="checkbox" /> Had as original in 80s-90s</label>
+            <label><input id="had-copy-past-only" type="checkbox" /> Had as copy in 80s-90s</label>
           </fieldset>
 
           <section class="hero-latest" id="hero-latest"></section>
@@ -222,6 +224,58 @@
           </div>
 
           <div class="collection-summary" id="collection-summary"></div>
+          <section class="batch-editor admin-only hidden" id="batch-editor">
+            <div class="batch-editor__header">
+              <div>
+                <p class="eyebrow">Admin Batch Edit</p>
+                <h3>Update Many Games At Once</h3>
+              </div>
+              <p class="batch-editor__summary" id="batch-selection-summary">No games selected.</p>
+            </div>
+            <div class="batch-editor__controls">
+              <div class="batch-editor__group">
+                <button class="button button--ghost" id="batch-select-visible" type="button">Select Visible</button>
+                <button class="button button--ghost" id="batch-clear-selection" type="button">Clear Selection</button>
+              </div>
+              <div class="batch-editor__group batch-editor__group--field">
+                <label class="field field--compact">
+                  <span>Field</span>
+                  <select id="batch-field">
+                    <option value="publisher">Publisher</option>
+                    <option value="developer">Developer</option>
+                    <option value="genre">Genre</option>
+                    <option value="release">Release Year</option>
+                    <option value="boxSize">Box Size</option>
+                    <option value="chipset">Chipset</option>
+                    <option value="whdloadInstalled">WHDLoad Installed</option>
+                    <option value="complete">Complete</option>
+                    <option value="edition">Edition</option>
+                    <option value="tested">Tested</option>
+                    <option value="copyProtection">Copy Protection</option>
+                    <option value="holRarity">Hall of Light Rarity</option>
+                    <option value="sold">Sold</option>
+                    <option value="hadOriginalPast">Had Original in 80s-90s</option>
+                    <option value="hadCopyPast">Had Copy in 80s-90s</option>
+                    <option value="value">Value</option>
+                    <option value="nostalgiaValue">Nostalgia Value</option>
+                  </select>
+                </label>
+                <label class="field field--compact" id="batch-value-text-field">
+                  <span>Value</span>
+                  <input id="batch-value-text" type="text" />
+                </label>
+                <label class="field field--compact hidden" id="batch-value-number-field">
+                  <span>Value</span>
+                  <input id="batch-value-number" type="number" />
+                </label>
+                <label class="field field--compact hidden" id="batch-value-select-field">
+                  <span>Value</span>
+                  <select id="batch-value-select"></select>
+                </label>
+                <button class="button button--primary" id="batch-apply" type="button">Apply To Selection</button>
+              </div>
+            </div>
+          </section>
           <div class="list-header hidden" id="list-header" aria-hidden="true">
             <span>Title</span>
             <span>Genre</span>
@@ -377,7 +431,13 @@
           <span class="window-gadget"></span>
         </div>
         <div class="game-card__body">
-          <h3 class="game-card__title"></h3>
+          <div class="game-card__title-row">
+            <label class="game-card__select hidden">
+              <input class="game-card__select-input" type="checkbox" />
+              <span>Select</span>
+            </label>
+            <h3 class="game-card__title"></h3>
+          </div>
           <div class="game-card__media">
             <div class="boxart-frame">
               <img class="boxart-image hidden" alt="" loading="lazy" />
@@ -561,6 +621,12 @@
                 <option value="1">1 - Least meaningful</option>
               </select>
             </label>
+            <label class="field field--checkbox">
+              <span><input id="editor-had-original-past" type="checkbox" /> Had as original in the 80s-90s</span>
+            </label>
+            <label class="field field--checkbox">
+              <span><input id="editor-had-copy-past" type="checkbox" /> Had as copy in the 80s-90s</span>
+            </label>
             <label class="field">
               <span>Top 50 Rank</span>
               <input id="editor-top50-rank" type="number" min="1" max="50" />
@@ -690,6 +756,14 @@
                   <div class="review-row">
                     <div class="review-row__source">Sold</div>
                     <div class="review-row__score" id="details-sold"></div>
+                  </div>
+                  <div class="review-row">
+                    <div class="review-row__source">Had Original in 80s-90s</div>
+                    <div class="review-row__score" id="details-had-original-past"></div>
+                  </div>
+                  <div class="review-row">
+                    <div class="review-row__source">Had Copy in 80s-90s</div>
+                    <div class="review-row__score" id="details-had-copy-past"></div>
                   </div>
                 </div>
               </section>
